@@ -51,6 +51,18 @@
 | `list_items` | `GET /v1/items` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID` |
 | `update_item` | `PATCH /v1/items/{item_id}` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `ITEM_NOT_FOUND`, `ITEM_NAME_CONFLICT`, `ITEM_VERSION_CONFLICT` |
 | `delete_item` | `DELETE /v1/items/{item_id}` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `ITEM_NOT_FOUND`, `ITEM_VERSION_CONFLICT` |
+| `comfy_workspace_init` | `POST /v1/comfy/workspace/init` | yes | `200` | `UNAUTHORIZED`, `RESOURCE_CONFLICT` |
+| `comfy_versions_list` | `GET /v1/comfy/versions` | yes | `200` | `UNAUTHORIZED` |
+| `comfy_versions_fetch` | `POST /v1/comfy/versions/fetch` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `DEPENDENCY_UNAVAILABLE`, `RESOURCE_CONFLICT` |
+| `comfy_versions_use` | `POST /v1/comfy/versions/use` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `RESOURCE_NOT_FOUND`, `RESOURCE_CONFLICT` |
+| `comfy_versions_current` | `GET /v1/comfy/versions/current` | yes | `200` | `UNAUTHORIZED` |
+| `comfy_models_list` | `GET /v1/comfy/models` | yes | `200` | `UNAUTHORIZED` |
+| `comfy_models_link` | `POST /v1/comfy/models/link` | yes | `200` | `UNAUTHORIZED`, `RESOURCE_NOT_FOUND`, `RESOURCE_CONFLICT` |
+| `comfy_models_download` | `POST /v1/comfy/models/download` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `DEPENDENCY_UNAVAILABLE` |
+| `comfy_service_start` | `POST /v1/comfy/service/start` | yes | `200` | `UNAUTHORIZED`, `RESOURCE_NOT_FOUND`, `RESOURCE_CONFLICT`, `DEPENDENCY_UNAVAILABLE` |
+| `comfy_service_stop` | `POST /v1/comfy/service/stop` | yes | `200` | `UNAUTHORIZED`, `DEPENDENCY_UNAVAILABLE` |
+| `comfy_service_status` | `GET /v1/comfy/service/status` | yes | `200` | `UNAUTHORIZED` |
+| `comfy_service_logs` | `GET /v1/comfy/service/logs` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID` |
 
 Cross-cutting errors such as `UNAUTHORIZED`, `REQUEST_INVALID`, and `INTERNAL_ERROR` are defined by the common error contract. `app/api/operations.py` tracks route-specific business errors; the table above lists the caller-visible union where useful.
 

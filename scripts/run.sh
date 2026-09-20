@@ -12,32 +12,32 @@ Usage:
   ./scripts/run.sh -h|--help
 
 职责:
-  日常快捷 recipe 入口。只编排 dev.sh 和 deploy.sh 的稳定命令，方便本地高频启停。
+  日常快捷 recipe 入口。只编排 dev.sh 的稳定命令，方便远程开发机高频启停。
 
 不负责:
   不直接管理进程、Docker Compose、K8s、远端资源或跨仓库服务。
-  宿主机本地进程请使用 ./scripts/dev.sh；Docker Compose 服务请使用 ./scripts/deploy.sh。
+  精确生命周期请使用 ./scripts/dev.sh；本机到远程机器的 SSH 操作请使用 ./scripts/remote.sh。
 
 运行环境:
   Requires: Bash.
-  Dependencies: recipe 调用到的 dev.sh / deploy.sh 子命令所需依赖。
+  Dependencies: recipe 调用到的 dev.sh 子命令所需依赖。
 
 命令:
-  up dev        启动常见本地开发环境：compose-deps + 宿主机 API。
-  status dev    查看常见本地开发环境：宿主机 API + compose-deps。
-  down dev      停止常见本地开发环境：宿主机 API + compose-deps。
-  restart dev   重启常见本地开发环境：先 down dev，再 up dev。
-  check dev     检查常见本地开发环境：宿主机前置条件 + Compose/脚本配置。
+  up dev        启动远程开发机常用服务：API + ComfyUI。
+  status dev    查看远程开发机常用服务：API + ComfyUI。
+  down dev      停止远程开发机常用服务：ComfyUI + API。
+  restart dev   重启远程开发机常用服务：先 down dev，再 up dev。
+  check dev     检查当前代码目录前置条件。
   help          显示帮助。
 
 副作用与保护边界:
   run.sh 只做顺序编排，不吞掉子命令失败，不添加额外兜底。
-  dev recipe 表示当前项目的日常开发环境全集。
-  up dev 先执行 ./scripts/deploy.sh up compose-deps，再执行 ./scripts/dev.sh start api。
-  status dev 先执行 ./scripts/dev.sh status，再执行 ./scripts/deploy.sh status compose-deps。
-  down dev 先执行 ./scripts/dev.sh stop api，再执行 ./scripts/deploy.sh down compose-deps。
+  dev recipe 表示当前项目在远程开发机上的日常运行全集。
+  up dev 先执行 ./scripts/dev.sh start api，再执行 ./scripts/dev.sh start comfyui。
+  status dev 先执行 ./scripts/dev.sh status api，再执行 ./scripts/dev.sh status comfyui。
+  down dev 先执行 ./scripts/dev.sh stop comfyui，再执行 ./scripts/dev.sh stop api。
   restart dev 先执行 ./scripts/run.sh down dev，再执行 ./scripts/run.sh up dev。
-  check dev 先执行 ./scripts/dev.sh doctor，再执行 ./scripts/deploy.sh check。
+  check dev 执行 ./scripts/dev.sh doctor。
 
 常用示例:
   ./scripts/run.sh up dev
@@ -65,8 +65,8 @@ Usage:
   执行日常快捷 recipe ${name}。查看顶层 help 获取完整配置、输出和退出码合同。
 
 副作用与保护边界:
-  dev recipe 表示当前项目的日常开发环境全集。
-  run.sh 不直接实现进程或 compose 细节。
+  dev recipe 表示当前项目在远程开发机上的日常运行全集。
+  run.sh 不直接实现进程细节。
 
 常用示例:
   ./scripts/run.sh ${name} dev
@@ -86,26 +86,26 @@ EOF
 
 run_dev_up() {
   section "Run Dev"
-  event "RUN" "compose-deps" "up"
-  "$ROOT_DIR/scripts/deploy.sh" up compose-deps
   event "RUN" "api" "start"
   "$ROOT_DIR/scripts/dev.sh" start api
+  event "RUN" "comfyui" "start"
+  "$ROOT_DIR/scripts/dev.sh" start comfyui
 }
 
 run_dev_status() {
   section "Run Dev"
   event "CHECK" "api" "status"
-  "$ROOT_DIR/scripts/dev.sh" status
-  event "CHECK" "compose-deps" "status"
-  "$ROOT_DIR/scripts/deploy.sh" status compose-deps
+  "$ROOT_DIR/scripts/dev.sh" status api
+  event "CHECK" "comfyui" "status"
+  "$ROOT_DIR/scripts/dev.sh" status comfyui
 }
 
 run_dev_down() {
   section "Run Dev"
+  event "RUN" "comfyui" "stop"
+  "$ROOT_DIR/scripts/dev.sh" stop comfyui
   event "RUN" "api" "stop"
   "$ROOT_DIR/scripts/dev.sh" stop api
-  event "RUN" "compose-deps" "down"
-  "$ROOT_DIR/scripts/deploy.sh" down compose-deps
 }
 
 run_dev_restart() {
@@ -117,8 +117,6 @@ run_dev_check() {
   section "Run Dev"
   event "CHECK" "dev" "doctor"
   "$ROOT_DIR/scripts/dev.sh" doctor
-  event "CHECK" "deploy" "check"
-  "$ROOT_DIR/scripts/deploy.sh" check
 }
 
 cmd="${1:-}"

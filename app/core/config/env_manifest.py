@@ -29,6 +29,17 @@ APPLICATION_ENV_KEYS = frozenset(
         "OBSERVABILITY__LOG_LEVEL",
         "OBSERVABILITY__ACCESS_LOG_ENABLED",
         "OBSERVABILITY__HEALTH_ACCESS_LOG",
+        "COMFY__WORKSPACE_DIR",
+        "COMFY__REPO_URL",
+        "COMFY__HOST",
+        "COMFY__PORT",
+        "COMFY__PYTHON",
+        "COMFY__EXTRA_ARGS",
+        "COMFY__HF_ENDPOINT",
+        "COMFY__HF_TOKEN",
+        "REMOTE__HOST",
+        "REMOTE__CODE_DIR",
+        "REMOTE__SYNC_CODE_DIR",
     }
 )
 
@@ -70,4 +81,3 @@ ENV_KEY_MANIFEST = EnvKeyManifest(
     derived_keys=DERIVED_ENV_KEYS,
     deprecated_keys=DEPRECATED_ENV_KEYS,
 )
-

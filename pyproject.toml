@@ -1,7 +1,7 @@
 [project]
-name = "fastapi-lite"
+name = "comfy-shell-v3"
 version = "0.2.0"
-description = "Reusable FastAPI service skeleton"
+description = "Thin FastAPI and CLI shell for remote ComfyUI version, model, and process management"
 requires-python = ">=3.13"
 dependencies = [
     "alembic==1.18.4",
@@ -13,7 +13,21 @@ dependencies = [
     "pydantic-settings==2.14.1",
     "python-dotenv==1.2.2",
     "httpx==0.28.1",
+    "huggingface-hub>=1.32.0",
 ]
+
+[project.scripts]
+comfyctl = "app.comfy.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
 
 [project.optional-dependencies]
 # Optional runtime capability groups. Keep them empty in the skeleton until a

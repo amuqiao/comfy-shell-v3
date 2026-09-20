@@ -142,6 +142,129 @@ operation_registry.register(
         response_schema="SuccessEnvelope[ItemResponse]",
     )
 )
+operation_registry.register(
+    OperationSpec(
+        "comfy_workspace_init",
+        "POST",
+        "/comfy/workspace/init",
+        200,
+        frozenset({"RESOURCE_CONFLICT"}),
+        response_schema="SuccessEnvelope[ComfyDictResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "comfy_versions_list",
+        "GET",
+        "/comfy/versions",
+        200,
+        frozenset(),
+        response_schema="SuccessEnvelope[ComfyListResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "comfy_versions_fetch",
+        "POST",
+        "/comfy/versions/fetch",
+        200,
+        frozenset({"DEPENDENCY_UNAVAILABLE", "RESOURCE_CONFLICT"}),
+        request_schema="ComfyVersionFetchRequest",
+        response_schema="SuccessEnvelope[ComfyDictResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "comfy_versions_use",
+        "POST",
+        "/comfy/versions/use",
+        200,
+        frozenset({"RESOURCE_NOT_FOUND", "RESOURCE_CONFLICT"}),
+        request_schema="ComfyVersionUseRequest",
+        response_schema="SuccessEnvelope[ComfyDictResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "comfy_versions_current",
+        "GET",
+        "/comfy/versions/current",
+        200,
+        frozenset(),
+        response_schema="SuccessEnvelope",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "comfy_models_list",
+        "GET",
+        "/comfy/models",
+        200,
+        frozenset(),
+        response_schema="SuccessEnvelope[ComfyListResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "comfy_models_link",
+        "POST",
+        "/comfy/models/link",
+        200,
+        frozenset({"RESOURCE_NOT_FOUND", "RESOURCE_CONFLICT"}),
+        response_schema="SuccessEnvelope[ComfyDictResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "comfy_models_download",
+        "POST",
+        "/comfy/models/download",
+        200,
+        frozenset({"DEPENDENCY_UNAVAILABLE"}),
+        request_schema="ComfyModelDownloadRequest",
+        response_schema="SuccessEnvelope[ComfyDictResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "comfy_service_start",
+        "POST",
+        "/comfy/service/start",
+        200,
+        frozenset({"RESOURCE_NOT_FOUND", "RESOURCE_CONFLICT", "DEPENDENCY_UNAVAILABLE"}),
+        response_schema="SuccessEnvelope[ComfyDictResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "comfy_service_stop",
+        "POST",
+        "/comfy/service/stop",
+        200,
+        frozenset({"DEPENDENCY_UNAVAILABLE"}),
+        response_schema="SuccessEnvelope[ComfyDictResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "comfy_service_status",
+        "GET",
+        "/comfy/service/status",
+        200,
+        frozenset(),
+        response_schema="SuccessEnvelope[ComfyDictResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "comfy_service_logs",
+        "GET",
+        "/comfy/service/logs",
+        200,
+        frozenset({"REQUEST_INVALID"}),
+        response_schema="SuccessEnvelope[ComfyLogResponse]",
+    )
+)
 operation_registry.validate()
 operation_registry.freeze()
 

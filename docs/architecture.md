@@ -50,8 +50,8 @@ workspace dir
 推荐远程目录：
 
 ```text
-~/code/comfy-shell-v3/          # REMOTE_CODE_DIR，项目源码
-~/comfy-shell-workspace/dev/    # COMFY_WORKSPACE_DIR，ComfyUI 运行资产
+/data/wangqiao/comfy-shell-v3/            # REMOTE__CODE_DIR，项目源码
+/data/wangqiao/comfy-shell-v3-workspace/  # COMFY__WORKSPACE_DIR，ComfyUI 运行资产
 ```
 
 ## 架构结论
@@ -132,11 +132,11 @@ scripts/verify.sh    # lint/test/config/script checks
 
 ```text
 macOS 本机 code dir
-  .env            # ENV_NAME=local，包含 REMOTE_HOST/REMOTE_CODE_DIR
+  .env            # RUNTIME__APP_ENV=local，包含 REMOTE__HOST/REMOTE__CODE_DIR
   .env.example    # 仓库模板
 
 Linux 远程 code dir
-  .env            # ENV_NAME=dev，包含 COMFY_WORKSPACE_DIR/API/HF key
+  .env            # RUNTIME__APP_ENV=dev，包含 COMFY__WORKSPACE_DIR/API/HF key
   .env.example    # git pull 得到的模板
 ```
 
@@ -157,7 +157,7 @@ RemoteSettings      # 新增：仅 local 环境使用，远程主机和远程代
 - `.env.example` 是配置 key 模板。
 - 真实 `.env` 不提交。
 - 环境变量可以覆盖 `.env` 中的同名配置。
-- `ENV_NAME=dev` 时不允许出现 `REMOTE_*`，因为远程服务不应该知道本机编排参数。
+- `RUNTIME__APP_ENV=dev` 时不允许出现 `REMOTE__*`，因为远程服务不应该知道本机编排参数。
 - 配置错误启动即失败，不做默认路径猜测。
 
 ## 运行时 Workspace
@@ -165,7 +165,7 @@ RemoteSettings      # 新增：仅 local 环境使用，远程主机和远程代
 远程 workspace 结构：
 
 ```text
-~/comfy-shell-workspace/dev/
+/data/wangqiao/comfy-shell-v3-workspace/
   sources/
     ComfyUI.git/
   versions/
@@ -208,7 +208,7 @@ macOS 本机
   -> git push
 
 Linux 远程
-  -> cd $REMOTE_CODE_DIR
+  -> cd $REMOTE__CODE_DIR
   -> git pull --ff-only
   -> uv sync --frozen
   -> ./scripts/run.sh check dev

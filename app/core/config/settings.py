@@ -7,9 +7,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.config.env_manifest import ENV_KEY_MANIFEST
 from app.core.config.sections import (
+    ComfySettings,
     DatabaseSettings,
     HttpClientSettings,
     ObservabilitySettings,
+    RemoteSettings,
     RedisSettings,
     RuntimeSettings,
     SecuritySettings,
@@ -67,10 +69,20 @@ class AppSettings(BaseSettings):
     storage: StorageSettings = Field(default_factory=StorageSettings)
     http_client: HttpClientSettings = Field(default_factory=HttpClientSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
+    comfy: ComfySettings = Field(default_factory=ComfySettings)
+    remote: RemoteSettings = Field(default_factory=RemoteSettings)
 
     @model_validator(mode="after")
     def validate_invariants(self) -> "AppSettings":
         self.security.allowed_origin_list
+        if self.runtime.app_env == "dev":
+            forbidden_remote = {
+                "REMOTE__HOST": self.remote.host,
+                "REMOTE__CODE_DIR": self.remote.code_dir,
+                "REMOTE__SYNC_CODE_DIR": self.remote.sync_code_dir,
+            }
+            if any(value for value in forbidden_remote.values()):
+                raise ValueError("REMOTE__* config belongs to local orchestration, not dev runtime")
         validate_release_invariants(
             runtime=self.runtime,
             security=self.security,

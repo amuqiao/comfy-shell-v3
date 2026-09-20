@@ -105,6 +105,7 @@ def test_script_help_commands_work():
         "./scripts/dev.sh",
         "./scripts/deploy.sh",
         "./scripts/run.sh",
+        "./scripts/remote.sh",
         "./scripts/k8s.sh",
         "./scripts/verify.sh",
         "./scripts/tools.sh",
@@ -365,10 +366,10 @@ def test_stop_and_restart_reject_unknown_target(tmp_path):
 
     assert stop.returncode == 2
     assert "unexpected argument" in stop.stderr
-    assert "stop [api]" in stop.stderr
+    assert "stop [api|comfyui]" in stop.stderr
     assert restart.returncode == 2
     assert "unexpected argument" in restart.stderr
-    assert "restart [api]" in restart.stderr
+    assert "restart [api|comfyui]" in restart.stderr
 
 
 def test_stale_pid_with_matching_command_but_wrong_cwd_is_not_killed(tmp_path):
@@ -611,7 +612,7 @@ def test_deploy_modes_smoke():
     assert "dev" not in result.stdout
 
 
-def test_run_dev_status_checks_api_then_compose_deps(tmp_path):
+def test_run_dev_status_checks_api_then_comfyui(tmp_path):
     root, log_file = fake_run_root(tmp_path)
 
     result = subprocess.run(
@@ -625,12 +626,12 @@ def test_run_dev_status_checks_api_then_compose_deps(tmp_path):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert log_file.read_text().splitlines() == [
-        "dev status",
-        "deploy status compose-deps",
+        "dev status api",
+        "dev status comfyui",
     ]
 
 
-def test_run_dev_check_checks_host_then_compose_contract(tmp_path):
+def test_run_dev_check_checks_host(tmp_path):
     root, log_file = fake_run_root(tmp_path)
 
     result = subprocess.run(
@@ -643,13 +644,10 @@ def test_run_dev_check_checks_host_then_compose_contract(tmp_path):
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert log_file.read_text().splitlines() == [
-        "dev doctor",
-        "deploy check",
-    ]
+    assert log_file.read_text().splitlines() == ["dev doctor"]
 
 
-def test_run_dev_up_starts_deps_then_api(tmp_path):
+def test_run_dev_up_starts_api_then_comfyui(tmp_path):
     root, log_file = fake_run_root(tmp_path)
 
     result = subprocess.run(
@@ -663,12 +661,12 @@ def test_run_dev_up_starts_deps_then_api(tmp_path):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert log_file.read_text().splitlines() == [
-        "deploy up compose-deps",
         "dev start api",
+        "dev start comfyui",
     ]
 
 
-def test_run_dev_down_stops_api_then_deps(tmp_path):
+def test_run_dev_down_stops_comfyui_then_api(tmp_path):
     root, log_file = fake_run_root(tmp_path)
 
     result = subprocess.run(
@@ -682,8 +680,8 @@ def test_run_dev_down_stops_api_then_deps(tmp_path):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert log_file.read_text().splitlines() == [
+        "dev stop comfyui",
         "dev stop api",
-        "deploy down compose-deps",
     ]
 
 
@@ -701,15 +699,15 @@ def test_run_dev_restart_runs_down_then_up(tmp_path):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert log_file.read_text().splitlines() == [
+        "dev stop comfyui",
         "dev stop api",
-        "deploy down compose-deps",
-        "deploy up compose-deps",
         "dev start api",
+        "dev start comfyui",
     ]
 
 
-def test_run_dev_up_propagates_deploy_failure_without_starting_api(tmp_path):
-    root, log_file = fake_run_root(tmp_path, deploy_exit=17)
+def test_run_dev_up_propagates_api_failure_without_starting_comfyui(tmp_path):
+    root, log_file = fake_run_root(tmp_path, dev_fail_args="start api", dev_fail_exit=17)
 
     result = subprocess.run(
         ["./scripts/run.sh", "up", "dev"],
@@ -721,11 +719,11 @@ def test_run_dev_up_propagates_deploy_failure_without_starting_api(tmp_path):
     )
 
     assert result.returncode == 17
-    assert log_file.read_text().splitlines() == ["deploy up compose-deps"]
+    assert log_file.read_text().splitlines() == ["dev start api"]
 
 
-def test_run_dev_down_propagates_dev_failure_without_stopping_deps(tmp_path):
-    root, log_file = fake_run_root(tmp_path, dev_exit=19)
+def test_run_dev_down_propagates_comfyui_failure_without_stopping_api(tmp_path):
+    root, log_file = fake_run_root(tmp_path, dev_fail_args="stop comfyui", dev_fail_exit=19)
 
     result = subprocess.run(
         ["./scripts/run.sh", "down", "dev"],
@@ -737,11 +735,11 @@ def test_run_dev_down_propagates_dev_failure_without_stopping_deps(tmp_path):
     )
 
     assert result.returncode == 19
-    assert log_file.read_text().splitlines() == ["dev stop api"]
+    assert log_file.read_text().splitlines() == ["dev stop comfyui"]
 
 
 def test_run_dev_restart_propagates_down_failure_without_starting(tmp_path):
-    root, log_file = fake_run_root(tmp_path, deploy_exit=17)
+    root, log_file = fake_run_root(tmp_path, dev_fail_args="stop api", dev_fail_exit=17)
 
     result = subprocess.run(
         ["./scripts/run.sh", "restart", "dev"],
@@ -754,16 +752,16 @@ def test_run_dev_restart_propagates_down_failure_without_starting(tmp_path):
 
     assert result.returncode == 17
     assert log_file.read_text().splitlines() == [
+        "dev stop comfyui",
         "dev stop api",
-        "deploy down compose-deps",
     ]
 
 
-def test_run_dev_restart_propagates_up_failure_without_starting_api(tmp_path):
+def test_run_dev_restart_propagates_up_failure_without_starting_comfyui(tmp_path):
     root, log_file = fake_run_root(
         tmp_path,
-        deploy_fail_args="up compose-deps",
-        deploy_fail_exit=17,
+        dev_fail_args="start api",
+        dev_fail_exit=17,
     )
 
     result = subprocess.run(
@@ -777,9 +775,9 @@ def test_run_dev_restart_propagates_up_failure_without_starting_api(tmp_path):
 
     assert result.returncode == 17
     assert log_file.read_text().splitlines() == [
+        "dev stop comfyui",
         "dev stop api",
-        "deploy down compose-deps",
-        "deploy up compose-deps",
+        "dev start api",
     ]
 
 
@@ -799,8 +797,8 @@ def test_run_dev_check_propagates_dev_failure_without_checking_deploy(tmp_path):
     assert log_file.read_text().splitlines() == ["dev doctor"]
 
 
-def test_run_dev_check_propagates_deploy_failure_after_host_check(tmp_path):
-    root, log_file = fake_run_root(tmp_path, deploy_exit=17)
+def test_run_dev_check_propagates_doctor_failure(tmp_path):
+    root, log_file = fake_run_root(tmp_path, dev_fail_args="doctor", dev_fail_exit=17)
 
     result = subprocess.run(
         ["./scripts/run.sh", "check", "dev"],
@@ -812,10 +810,7 @@ def test_run_dev_check_propagates_deploy_failure_after_host_check(tmp_path):
     )
 
     assert result.returncode == 17
-    assert log_file.read_text().splitlines() == [
-        "dev doctor",
-        "deploy check",
-    ]
+    assert log_file.read_text().splitlines() == ["dev doctor"]
 
 
 def test_run_help_documents_daily_dev_contract():
@@ -824,7 +819,7 @@ def test_run_help_documents_daily_dev_contract():
     assert result.returncode == 0
     assert "restart dev" in result.stdout
     assert "check dev" in result.stdout
-    assert "dev recipe 表示当前项目的日常开发环境全集" in result.stdout
+    assert "dev recipe 表示当前项目在远程开发机上的日常运行全集" in result.stdout
     assert "down all" not in result.stdout
 
 

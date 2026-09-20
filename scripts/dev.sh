@@ -13,7 +13,7 @@ Usage:
   ./scripts/dev.sh -h|--help
 
 职责:
-  本地开发入口。管理当前仓库的 FastAPI API 进程、开发依赖检查、迁移、端口扫描和测试快捷命令。
+  本地或远程代码目录内的精确开发入口。管理当前仓库的 FastAPI API 进程、ComfyUI 进程、开发依赖检查、迁移、端口扫描和测试快捷命令。
 
 不负责:
   不管理 Docker/Compose PostgreSQL、Redis、生产部署、远端资源、真实 Redis/S3 adapter、业务 worker 或跨仓库服务。
@@ -28,11 +28,12 @@ Usage:
   bootstrap        缺少 .env 时从 .env.example 创建，并执行 uv sync --all-groups。
   doctor           检查常用本地开发前置条件、配置文件、端口和脚本入口。
   run              前台运行 FastAPI API，启用 uvicorn --reload。
-  start api        后台启动 FastAPI API。
-  stop [api]       停止后台 API；省略 api 时等价于 stop api。
-  restart [api]    重启后台 API；省略 api 时等价于 restart api。
-  status           展示本地 API 进程、端口、URL、配置文件和日志路径。
-  logs             tail API 日志。
+  start <api|comfyui>      后台启动 FastAPI API 或 ComfyUI。
+  stop [api|comfyui]       停止后台 API 或 ComfyUI；省略 target 时等价于 stop api。
+  restart [api|comfyui]    重启后台 API 或 ComfyUI；省略 target 时等价于 restart api。
+  status [api|comfyui]     展示 API 或 ComfyUI 状态；省略 target 时等价于 status api。
+  logs [api|comfyui]       tail API 或 ComfyUI 日志；省略 target 时等价于 logs api。
+  comfy <args...>          透传到 uv run python -m app.comfy.cli。
   migrate          对当前 DATABASE__URL 执行 Alembic upgrade head。
   ports [ports...] 扫描本地端口；支持 --ports、端口范围、--json。
   test             运行 pytest。
@@ -56,7 +57,7 @@ Usage:
   bootstrap 会创建 .env 并同步依赖。
   start/restart 会启动本地后台进程，并拒绝占用中的 API_PORT。
   stop 会停止本脚本 PID 文件记录的 API 进程。
-  start/stop/restart/status 只管理本地 API，不启动或停止 Docker PostgreSQL/Redis。
+  start/stop/restart/status 只管理本项目 API 和 ComfyUI，不启动或停止 Docker PostgreSQL/Redis。
   migrate 会写入 DATABASE__URL 指向的数据库，执行前会拒绝明显非本地 URL。
   doctor/status/ports 不修改服务状态。
 
@@ -76,9 +77,11 @@ Usage:
   ./scripts/run.sh restart dev
   ./scripts/run.sh check dev
 
-  # 精确控制：只操作本地 API 或 Docker 依赖。
+  # 精确控制：只操作 API、ComfyUI 或 Docker 依赖。
   ./scripts/dev.sh restart api
+  ./scripts/dev.sh restart comfyui
   ./scripts/dev.sh stop api
+  ./scripts/dev.sh stop comfyui
   ./scripts/deploy.sh up compose-deps
   ./scripts/deploy.sh status compose-deps
   ./scripts/deploy.sh down compose-deps
@@ -130,23 +133,27 @@ EOF
     start|stop|restart)
       local usage_target="api"
       if [[ "$name" == "stop" || "$name" == "restart" ]]; then
-        usage_target="[api]"
+        usage_target="[api|comfyui]"
+      else
+        usage_target="<api|comfyui>"
       fi
       cat <<EOF
 Usage:
   ./scripts/dev.sh ${name} ${usage_target}
 
 职责:
-  执行本地 API 生命周期子命令 ${name}。查看顶层 help 获取完整配置、输出和退出码合同。
+  执行 API 或 ComfyUI 生命周期子命令 ${name}。查看顶层 help 获取完整配置、输出和退出码合同。
 
 副作用与保护边界:
   start/restart 会启动本地后台进程，并拒绝占用中的 API_PORT。
   stop 只会停止本脚本启动且 PID/metadata 匹配的 API 进程。
+  comfyui target 由 app.comfy CLI 管理 workspace 内 PID 和日志。
   ${name} 不启动或停止 Docker PostgreSQL/Redis；依赖容器请使用 ./scripts/deploy.sh。
   PID 文件陈旧或 PID 不属于当前仓库 uvicorn 时，不会 kill 该进程。
 
 常用示例:
   ./scripts/dev.sh ${name} api
+  ./scripts/dev.sh ${name} comfyui
 
 Exit Codes:
   0  成功
@@ -157,7 +164,7 @@ EOF
     run|status|logs|migrate|test)
       cat <<EOF
 Usage:
-  ./scripts/dev.sh ${name}
+  ./scripts/dev.sh ${name} [api|comfyui]
 
 职责:
   执行 dev 子命令 ${name}。查看顶层 help 获取完整配置、输出和退出码合同。
@@ -165,7 +172,7 @@ Usage:
 副作用与保护边界:
   run 会前台启动 uvicorn。
   migrate 会写入 DATABASE__URL 指向的数据库，并拒绝非本地主机。
-  status/logs/test 按各自工具语义执行，不启动后台 API。
+  status/logs/test 按各自工具语义执行，不启动后台 API 或 ComfyUI。
 
 常用示例:
   ./scripts/dev.sh ${name}
@@ -175,6 +182,22 @@ Exit Codes:
   2  参数或前置条件错误
   3  环境保护拒绝
   其他非 0 由下层工具透传
+EOF
+      ;;
+    comfy)
+      cat <<'EOF'
+Usage:
+  ./scripts/dev.sh comfy <workspace|versions|models|service> <args...>
+
+职责:
+  透传到 ComfyUI shell Python CLI。脚本只负责进入项目根目录和 uv 环境。
+
+常用示例:
+  ./scripts/dev.sh comfy workspace init
+  ./scripts/dev.sh comfy versions fetch main
+  ./scripts/dev.sh comfy versions use ComfyUI-main-a1b2c3d
+  ./scripts/dev.sh comfy models link
+  ./scripts/dev.sh comfy service status
 EOF
       ;;
     ports)
@@ -282,6 +305,7 @@ doctor() {
   "$ROOT_DIR/scripts/dev.sh" help >/dev/null
   "$ROOT_DIR/scripts/deploy.sh" help >/dev/null
   "$ROOT_DIR/scripts/run.sh" help >/dev/null
+  "$ROOT_DIR/scripts/remote.sh" help >/dev/null
   "$ROOT_DIR/scripts/verify.sh" help >/dev/null
   event "OK" "entrypoints" "help commands"
 }
@@ -387,12 +411,34 @@ logs_api() {
   tail -n "$TAIL_LINES" "$API_LOG_FILE"
 }
 
+comfy_cli() {
+  require_uv
+  cd "$ROOT_DIR"
+  uv run python -m app.comfy.cli "$@"
+}
+
+start_comfyui() {
+  comfy_cli service start
+}
+
+stop_comfyui() {
+  comfy_cli service stop
+}
+
+status_comfyui() {
+  comfy_cli service status
+}
+
+logs_comfyui() {
+  comfy_cli service logs --lines "$TAIL_LINES"
+}
+
 migrate() {
   assert_local_url "DATABASE__URL"
   require_uv
   section "Database"
   cd "$ROOT_DIR"
-  uv run alembic upgrade head
+  uv run python -m alembic upgrade head
 }
 
 scan_ports() {
@@ -431,37 +477,69 @@ case "$cmd" in
   start)
     shift
     if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
-    [[ "${1:-}" == "api" ]] || die "usage: ./scripts/dev.sh start api" 2
+    target="${1:-}"
+    [[ -n "$target" ]] || die "usage: ./scripts/dev.sh start <api|comfyui>" 2
     shift
-    reject_extra_args "usage: ./scripts/dev.sh start api" "$@"
-    start_api
+    reject_extra_args "usage: ./scripts/dev.sh start $target" "$@"
+    case "$target" in
+      api) start_api ;;
+      comfyui) start_comfyui ;;
+      *) die "usage: ./scripts/dev.sh start <api|comfyui>; unexpected argument: $target" 2 ;;
+    esac
     ;;
   stop)
     shift
     if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
-    if [[ "${1:-}" == "api" ]]; then shift; fi
-    reject_extra_args "usage: ./scripts/dev.sh stop [api]" "$@"
-    stop_api
+    target="${1:-api}"
+    if [[ $# -gt 0 ]]; then shift; fi
+    reject_extra_args "usage: ./scripts/dev.sh stop [api|comfyui]" "$@"
+    case "$target" in
+      api) stop_api ;;
+      comfyui) stop_comfyui ;;
+      *) die "usage: ./scripts/dev.sh stop [api|comfyui]; unexpected argument: $target" 2 ;;
+    esac
     ;;
   restart)
     shift
     if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
-    if [[ "${1:-}" == "api" ]]; then shift; fi
-    reject_extra_args "usage: ./scripts/dev.sh restart [api]" "$@"
-    stop_api
-    start_api
+    target="${1:-api}"
+    if [[ $# -gt 0 ]]; then shift; fi
+    reject_extra_args "usage: ./scripts/dev.sh restart [api|comfyui]" "$@"
+    case "$target" in
+      api)
+        stop_api
+        start_api
+        ;;
+      comfyui)
+        stop_comfyui
+        start_comfyui
+        ;;
+      *) die "usage: ./scripts/dev.sh restart [api|comfyui]; unexpected argument: $target" 2 ;;
+    esac
     ;;
   status)
     shift
     if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
-    reject_extra_args "usage: ./scripts/dev.sh status" "$@"
-    status_api
+    target="${1:-api}"
+    if [[ $# -gt 0 ]]; then shift; fi
+    reject_extra_args "usage: ./scripts/dev.sh status [api|comfyui]" "$@"
+    case "$target" in
+      api) status_api ;;
+      comfyui) status_comfyui ;;
+      *) die "usage: ./scripts/dev.sh status [api|comfyui]; unexpected argument: $target" 2 ;;
+    esac
     ;;
   logs)
     shift
     if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
-    reject_extra_args "usage: ./scripts/dev.sh logs" "$@"
-    logs_api
+    target="${1:-api}"
+    if [[ $# -gt 0 ]]; then shift; fi
+    reject_extra_args "usage: ./scripts/dev.sh logs [api|comfyui]" "$@"
+    case "$target" in
+      api) logs_api ;;
+      comfyui) logs_comfyui ;;
+      *) die "usage: ./scripts/dev.sh logs [api|comfyui]; unexpected argument: $target" 2 ;;
+    esac
     ;;
   migrate)
     shift
@@ -479,7 +557,12 @@ case "$cmd" in
     if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
     reject_extra_args "usage: ./scripts/dev.sh test" "$@"
     cd "$ROOT_DIR"
-    uv run pytest
+    uv run python -m pytest
+    ;;
+  comfy)
+    shift
+    if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
+    comfy_cli "$@"
     ;;
   *)
     usage >&2

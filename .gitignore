@@ -8,3 +8,11 @@ htmlcov/
 storage/
 .run/
 logs/
+/workspace/
+/comfy-shell-v3-workspace/
+/sources/
+/versions/
+/models/
+/current
+/state.json
+/dev

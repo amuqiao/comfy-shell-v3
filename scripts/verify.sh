@@ -168,7 +168,7 @@ case "$cmd" in
     if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
     reject_extra_args "usage: ./scripts/verify.sh tests" "$@"
     cd "$ROOT_DIR"
-    uv run pytest
+    uv run python -m pytest
     ;;
   registry)
     shift
@@ -183,7 +183,7 @@ case "$cmd" in
     reject_extra_args "usage: ./scripts/verify.sh alembic" "$@"
     cd "$ROOT_DIR"
     uv run python scripts/verify/alembic_check.py
-    uv run alembic upgrade head --sql >/dev/null
+    uv run python -m alembic upgrade head --sql >/dev/null
     ;;
   syntax)
     shift
@@ -199,8 +199,8 @@ case "$cmd" in
     cd "$ROOT_DIR"
     export DATABASE__URL="${DATABASE__URL:-postgresql+asyncpg://postgres:postgres@127.0.0.1:25432/fastapi_lite_test}"
     uv run python scripts/verify/ensure_test_database.py
-    uv run alembic upgrade head
-    FASTAPI_LITE_POSTGRES_INTEGRATION=1 uv run pytest -m postgres_integration
+    uv run python -m alembic upgrade head
+    FASTAPI_LITE_POSTGRES_INTEGRATION=1 uv run python -m pytest -m postgres_integration
     ;;
   migration-roundtrip)
     shift
@@ -217,6 +217,7 @@ case "$cmd" in
     bash -n scripts/dev.sh
     bash -n scripts/deploy.sh
     bash -n scripts/run.sh
+    bash -n scripts/remote.sh
     bash -n scripts/k8s.sh
     bash -n scripts/verify.sh
     bash -n scripts/tools.sh
@@ -230,6 +231,7 @@ case "$cmd" in
     ./scripts/run.sh help >/dev/null
     ./scripts/run.sh check --help >/dev/null
     ./scripts/run.sh restart --help >/dev/null
+    ./scripts/remote.sh help >/dev/null
     ./scripts/k8s.sh help >/dev/null
     ./scripts/verify.sh help >/dev/null
     ./scripts/tools.sh help >/dev/null

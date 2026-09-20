@@ -16,8 +16,8 @@ class RuntimeSettings(ConfigSection):
 
 
 class ServiceSettings(ConfigSection):
-    name: str = "fastapi-lite"
-    title: str = "FastAPI Lite"
+    name: str = "comfy-shell-v3"
+    title: str = "ComfyUI Shell"
     api_prefix: str = "/v1"
 
     @field_validator("api_prefix")
@@ -124,3 +124,26 @@ class ObservabilitySettings(ConfigSection):
             raise ValueError("OBSERVABILITY__LOG_LEVEL must be a valid Python logging level")
         return normalized
 
+
+class ComfySettings(ConfigSection):
+    workspace_dir: str = "/data/wangqiao/comfy-shell-v3-workspace"
+    repo_url: str = "https://github.com/comfyanonymous/ComfyUI.git"
+    host: str = "127.0.0.1"
+    port: int = Field(default=8188, ge=1, le=65535)
+    python: str = "python"
+    extra_args: str = ""
+    hf_endpoint: str = "https://huggingface.co"
+    hf_token: SecretStr = Field(default=SecretStr(""), repr=False)
+
+    @field_validator("workspace_dir", "repo_url", "host", "python", "hf_endpoint")
+    @classmethod
+    def validate_non_empty(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("COMFY settings must not be empty")
+        return value
+
+
+class RemoteSettings(ConfigSection):
+    host: str = ""
+    code_dir: str = ""
+    sync_code_dir: str = ""
