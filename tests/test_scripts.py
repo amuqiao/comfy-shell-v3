@@ -1005,6 +1005,21 @@ def test_remote_missing_host_fails_before_ssh(tmp_path):
     assert "ssh:" not in result.stderr
 
 
+def test_remote_tunnel_missing_host_fails_before_ssh(tmp_path):
+    result = subprocess.run(
+        ["./scripts/remote.sh", "tunnel"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ENV_FILE=str(tmp_path / "missing.env")),
+    )
+
+    assert result.returncode == 2
+    assert "REMOTE__HOST is required" in result.stderr
+    assert "ssh:" not in result.stderr
+
+
 def test_run_help_documents_daily_dev_contract():
     result = run_script("./scripts/run.sh", "help")
 

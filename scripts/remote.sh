@@ -92,19 +92,27 @@ logs() {
 }
 
 shell_remote() {
-  ssh -t "$(remote_host)" "cd '$(remote_code_dir)' && exec \$SHELL -l"
+  local host
+  local code_dir
+  host="$(remote_host)"
+  code_dir="$(remote_code_dir)"
+  ssh -t "$host" "cd '$code_dir' && exec \$SHELL -l"
 }
 
 tunnel() {
+  local host
   local api
   local comfy
+  host="$(remote_host)"
   api="$(api_port)"
   comfy="$(comfy_port)"
-  ssh -N -L "$api:127.0.0.1:$api" -L "$comfy:127.0.0.1:$comfy" "$(remote_host)"
+  ssh -N -L "$api:127.0.0.1:$api" -L "$comfy:127.0.0.1:$comfy" "$host"
 }
 
 sync_dev() {
+  local host
   local target
+  host="$(remote_host)"
   target="$(remote_sync_code_dir)"
   rsync -az --delete \
     --exclude ".git/" \
@@ -112,7 +120,7 @@ sync_dev() {
     --exclude ".run/" \
     --exclude "logs/" \
     --exclude "__pycache__/" \
-    "$ROOT_DIR/" "$(remote_host):$target/"
+    "$ROOT_DIR/" "$host:$target/"
 }
 
 cmd="${1:-}"
