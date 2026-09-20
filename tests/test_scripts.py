@@ -64,6 +64,8 @@ def fake_run_root(
     deploy_fail_exit: int = 0,
     remote_fail_args: str | None = None,
     remote_fail_exit: int = 0,
+    version_ref: str = "v0.36.0",
+    version_name: str = "ComfyUI-v0.36.0-test123",
 ) -> tuple[Path, Path]:
     root = tmp_path / "fake-root"
     scripts = root / "scripts"
@@ -82,6 +84,10 @@ fi
     dev.write_text(
         f"""#!/usr/bin/env sh
 echo "dev $*" >> "{log_file}"
+if [ "$*" = "comfy versions fetch {version_ref}" ]; then
+  printf '{{"name":"{version_name}","ref":"{version_ref}"}}\\n'
+  exit 0
+fi
 echo "dev $*"
 {exit_for_args(dev_fail_args, dev_fail_exit)}\
 exit {dev_exit}
@@ -875,6 +881,27 @@ def test_run_versions_dispatches_to_comfy_cli(tmp_path):
     assert log_file.read_text().splitlines() == ["dev comfy versions fetch main"]
 
 
+def test_run_switch_fetches_uses_links_and_shows_current(tmp_path):
+    root, log_file = fake_run_root(tmp_path)
+
+    result = subprocess.run(
+        ["./scripts/run.sh", "switch", "v0.36.0"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert log_file.read_text().splitlines() == [
+        "dev comfy versions fetch v0.36.0",
+        "dev comfy versions use ComfyUI-v0.36.0-test123",
+        "dev comfy models link",
+        "dev comfy versions current",
+    ]
+
+
 def test_run_models_dispatches_to_comfy_cli(tmp_path):
     root, log_file = fake_run_root(tmp_path)
 
@@ -920,7 +947,7 @@ def test_run_help_documents_daily_dev_contract():
     assert "down all" not in result.stdout
 
 
-@pytest.mark.parametrize("action", ["check", "restart", "versions", "models", "remote", "logs"])
+@pytest.mark.parametrize("action", ["check", "restart", "versions", "switch", "models", "remote", "logs"])
 def test_run_action_help_does_not_execute_recipe(tmp_path, action):
     root, log_file = fake_run_root(tmp_path)
 
@@ -958,6 +985,7 @@ def test_run_rejects_missing_recipe(tmp_path, action):
     [
         ("logs", "usage: ./scripts/run.sh logs <api|comfyui>"),
         ("versions", "usage: ./scripts/run.sh versions <list|current|fetch|use> [args...]"),
+        ("switch", "usage: ./scripts/run.sh switch <ref>"),
         ("models", "usage: ./scripts/run.sh models <list|link|download> [args...]"),
         ("remote", "usage: ./scripts/run.sh remote <deploy|status|logs|shell|tunnel|sync-dev> [args...]"),
     ],

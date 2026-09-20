@@ -31,6 +31,7 @@ Usage:
   check dev     检查当前代码目录前置条件。
   logs <target> 查看日志，target 为 api 或 comfyui。
   versions ...  管理 ComfyUI 版本：list/current/fetch/use。
+  switch <ref>   拉取指定 ComfyUI ref，设置为 current，并链接共享 models。
   models ...    管理共享 models：list/link/download。
   remote ...    本机侧远程操作：deploy/status/logs/shell/tunnel/sync-dev。
   help          显示帮助。
@@ -51,6 +52,7 @@ Usage:
   ./scripts/run.sh up dev
   ./scripts/run.sh status dev
   ./scripts/run.sh logs comfyui
+  ./scripts/run.sh switch v0.36.0
   ./scripts/run.sh versions fetch main
   ./scripts/run.sh versions list
   ./scripts/run.sh versions use ComfyUI-main-a1b2c3d
@@ -124,6 +126,24 @@ Usage:
   ./scripts/run.sh versions list
   ./scripts/run.sh versions current
   ./scripts/run.sh versions use ComfyUI-main-a1b2c3d
+
+Exit Codes:
+  0  成功
+  2  参数错误
+  其他非 0 由 ComfyUI shell CLI 透传
+EOF
+      ;;
+    switch)
+      cat <<'EOF'
+Usage:
+  ./scripts/run.sh switch <ref>
+
+职责:
+  日常切换 ComfyUI 版本。按顺序执行 fetch ref、use resolved version、models link 和 current 展示。
+
+常用示例:
+  ./scripts/run.sh switch v0.36.0
+  ./scripts/run.sh switch main
 
 Exit Codes:
   0  成功
@@ -229,6 +249,26 @@ run_versions() {
   "$ROOT_DIR/scripts/dev.sh" comfy versions "$@"
 }
 
+run_switch() {
+  local ref="$1"
+  local fetch_output
+  local version_name
+  [[ -n "$ref" ]] || die "usage: ./scripts/run.sh switch <ref>" 2
+
+  section "Switch ComfyUI"
+  event "RUN" "version" "fetch $ref"
+  fetch_output="$("$ROOT_DIR/scripts/dev.sh" comfy versions fetch "$ref")"
+  printf "%s\n" "$fetch_output"
+  version_name="$(printf "%s" "$fetch_output" | uv run python -c 'import json,sys; print(json.load(sys.stdin)["name"])')"
+
+  event "RUN" "version" "use $version_name"
+  "$ROOT_DIR/scripts/dev.sh" comfy versions use "$version_name"
+  event "RUN" "models" "link"
+  "$ROOT_DIR/scripts/dev.sh" comfy models link
+  event "CHECK" "version" "current"
+  "$ROOT_DIR/scripts/dev.sh" comfy versions current
+}
+
 run_models() {
   [[ $# -gt 0 ]] || die "usage: ./scripts/run.sh models <list|link|download> [args...]" 2
   "$ROOT_DIR/scripts/dev.sh" comfy models "$@"
@@ -279,6 +319,15 @@ case "$cmd" in
     shift
     if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
     run_versions "$@"
+    ;;
+  switch)
+    shift
+    if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
+    ref="${1:-}"
+    [[ -n "$ref" ]] || die "usage: ./scripts/run.sh switch <ref>" 2
+    shift
+    reject_extra_args "usage: ./scripts/run.sh switch $ref" "$@"
+    run_switch "$ref"
     ;;
   models)
     shift
