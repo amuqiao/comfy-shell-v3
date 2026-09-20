@@ -8,7 +8,6 @@ def init_workspace(settings: AppSettings) -> ComfyPaths:
     paths = comfy_paths(settings)
     for path in (
         paths.root,
-        paths.sources,
         paths.versions,
         paths.models,
         paths.logs,
@@ -18,4 +17,3 @@ def init_workspace(settings: AppSettings) -> ComfyPaths:
     if not paths.state_file.exists():
         paths.state_file.write_text("{}\n", encoding="utf-8")
     return paths
-

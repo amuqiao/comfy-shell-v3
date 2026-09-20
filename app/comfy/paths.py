@@ -9,8 +9,6 @@ from app.core.config import AppSettings
 @dataclass(frozen=True)
 class ComfyPaths:
     root: Path
-    sources: Path
-    source_repo: Path
     versions: Path
     models: Path
     logs: Path
@@ -29,8 +27,6 @@ def comfy_paths(settings: AppSettings) -> ComfyPaths:
     run = root / "run"
     return ComfyPaths(
         root=root,
-        sources=root / "sources",
-        source_repo=root / "sources" / "ComfyUI.git",
         versions=root / "versions",
         models=root / "models",
         logs=logs,
@@ -42,4 +38,3 @@ def comfy_paths(settings: AppSettings) -> ComfyPaths:
         comfyui_meta_file=run / "comfyui.meta",
         comfyui_log_file=logs / "comfyui.log",
     )
-

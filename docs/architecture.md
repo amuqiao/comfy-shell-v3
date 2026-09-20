@@ -102,12 +102,12 @@ app/
   api/routes/
     comfy.py          # FastAPI 控制面路由
   comfy/
-    versions.py       # clone/fetch/materialize/use
+    versions.py       # download archive/materialize/use
     models.py         # shared models 和 current/models 软链接
     process.py        # ComfyUI start/stop/status/logs
     state.py          # workspace/state.json
     paths.py          # workspace 路径计算
-    git_ops.py        # git subprocess 封装
+    archives.py       # GitHub source archive 下载与解压
     hf.py             # Hugging Face 下载
 ```
 
@@ -166,8 +166,6 @@ RemoteSettings      # 新增：仅 local 环境使用，远程主机和远程代
 
 ```text
 /data/wangqiao/comfy-shell-v3-workspace/
-  sources/
-    ComfyUI.git/
   versions/
     ComfyUI-main-a1b2c3d/
     ComfyUI-v0.3.10-deadbee/
@@ -232,8 +230,8 @@ Linux 远程
 
 | 能力 | 最小行为 |
 | --- | --- |
-| 初始化 workspace | 创建 `sources/versions/models/logs/run/state.json`。 |
-| 拉取版本 | 从 ComfyUI GitHub fetch 指定 ref，解析 commit，物化到 `versions/`。 |
+| 初始化 workspace | 创建 `versions/models/logs/run/state.json`。 |
+| 拉取版本 | 从 ComfyUI GitHub source archive 下载指定 ref，解析 archive commit，物化到 `versions/`。 |
 | 切换版本 | 停止服务后更新 `current` 软链接，并链接 `current/models`。 |
 | 共享 models | workspace `models/` 是真源，版本目录只保留软链接。 |
 | 下载模型 | 支持 HF endpoint/token，下载到指定模型子目录。 |

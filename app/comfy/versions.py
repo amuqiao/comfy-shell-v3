@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
-from app.comfy import git_ops, process
+from app.comfy import archives, process
 from app.comfy.lock import WorkspaceLock
 from app.comfy.models import link_models_unlocked
 from app.comfy.paths import comfy_paths
@@ -32,11 +33,35 @@ def version_id(ref: str, commit: str) -> str:
 def fetch_version(settings: AppSettings, ref: str) -> dict[str, Any]:
     paths = init_workspace(settings)
     with WorkspaceLock(paths.lock_file):
-        git_ops.ensure_source_repo(settings.comfy.repo_url, paths.source_repo)
-        commit = git_ops.resolve_ref(paths.source_repo, ref)
-        name = version_id(ref, commit)
-        target = paths.versions / name
-        git_ops.materialize_version(paths.source_repo, target, commit)
+        ref_id = safe_ref(ref)
+        archive_path = paths.versions / f".download-{ref_id}.zip"
+        extract_dir = paths.versions / f".extract-{ref_id}"
+        shutil.rmtree(extract_dir, ignore_errors=True)
+        archive_path.unlink(missing_ok=True)
+
+        try:
+            archives.download_github_archive(settings.comfy.repo_url, ref, archive_path)
+            commit = archives.archive_commit(archive_path)
+            name = version_id(ref, commit)
+            target = paths.versions / name
+            if target.exists():
+                meta_path = target / VERSION_META
+                if not meta_path.exists():
+                    raise AppError(
+                        "RESOURCE_CONFLICT",
+                        details={"reason": "version_dir_missing_meta", "path": str(target)},
+                    )
+                existing = json.loads(meta_path.read_text(encoding="utf-8"))
+                if existing.get("commit") != commit:
+                    raise AppError(
+                        "RESOURCE_CONFLICT",
+                        details={"reason": "version_dir_commit_mismatch", "path": str(target)},
+                    )
+            else:
+                archives.extract_github_archive(archive_path, target, extract_dir)
+        finally:
+            archive_path.unlink(missing_ok=True)
+            shutil.rmtree(extract_dir, ignore_errors=True)
         meta = {
             "name": name,
             "ref": ref,
@@ -98,4 +123,3 @@ def use_version(settings: AppSettings, name: str) -> dict[str, Any]:
             },
         )
         return meta
-

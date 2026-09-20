@@ -1,11 +1,13 @@
 import json
+import shutil
 import subprocess
+import zipfile
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.comfy import models, process, versions
+from app.comfy import archives, models, process, versions
 from app.comfy.paths import comfy_paths
 from app.comfy.workspace import init_workspace
 from app.core.config import AppSettings
@@ -21,7 +23,7 @@ def comfy_settings(tmp_path: Path, repo_url: str | None = None) -> AppSettings:
         observability={"access_log_enabled": False},
         comfy={
             "workspace_dir": str(tmp_path / "workspace"),
-            "repo_url": repo_url or str(tmp_path / "repo"),
+            "repo_url": repo_url or "https://github.com/Comfy-Org/ComfyUI.git",
             "host": "127.0.0.1",
             "port": 8188,
             "python": "python",
@@ -30,35 +32,32 @@ def comfy_settings(tmp_path: Path, repo_url: str | None = None) -> AppSettings:
     )
 
 
-def git(repo: Path, *args: str) -> str:
-    result = subprocess.run(
-        ["git", "-C", str(repo), *args],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    return result.stdout.strip()
+def make_archive(tmp_path: Path) -> tuple[Path, str]:
+    archive_path = tmp_path / "ComfyUI-0.36.0.zip"
+    commit = "ee71d5c4993f29086b27fde1629a945ae48425bf"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.comment = commit.encode("utf-8")
+        archive.writestr("ComfyUI-0.36.0/main.py", "print('comfy test')\n")
+    return archive_path, commit
 
 
-def make_repo(tmp_path: Path) -> tuple[Path, str]:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    git(repo, "init")
-    git(repo, "config", "user.email", "test@example.com")
-    git(repo, "config", "user.name", "Test User")
-    (repo / "main.py").write_text("print('comfy test')\n", encoding="utf-8")
-    git(repo, "add", "main.py")
-    git(repo, "commit", "-m", "initial")
-    commit = git(repo, "rev-parse", "HEAD")
-    return repo, commit
+@pytest.fixture
+def fake_comfy_archive(tmp_path, monkeypatch):
+    archive_path, commit = make_archive(tmp_path)
+
+    def download_archive(repo_url: str, ref: str, target: Path) -> None:
+        assert repo_url == "https://github.com/Comfy-Org/ComfyUI.git"
+        assert ref == "v0.36.0"
+        shutil.copyfile(archive_path, target)
+
+    monkeypatch.setattr(archives, "download_github_archive", download_archive)
+    return commit
 
 
 def test_workspace_init_creates_runtime_layout(tmp_path):
     settings = comfy_settings(tmp_path)
     paths = init_workspace(settings)
 
-    assert paths.sources.is_dir()
     assert paths.versions.is_dir()
     assert paths.models.is_dir()
     assert paths.logs.is_dir()
@@ -66,13 +65,13 @@ def test_workspace_init_creates_runtime_layout(tmp_path):
     assert json.loads(paths.state_file.read_text(encoding="utf-8")) == {}
 
 
-def test_fetch_use_version_links_current_and_models(tmp_path):
-    repo, commit = make_repo(tmp_path)
-    settings = comfy_settings(tmp_path, str(repo))
+def test_fetch_use_version_links_current_and_models(tmp_path, fake_comfy_archive):
+    commit = fake_comfy_archive
+    settings = comfy_settings(tmp_path)
 
-    fetched = versions.fetch_version(settings, "HEAD")
+    fetched = versions.fetch_version(settings, "v0.36.0")
     assert fetched["commit"] == commit
-    assert fetched["name"].startswith("ComfyUI-HEAD-")
+    assert fetched["name"].startswith("ComfyUI-v0.36.0-")
 
     current = versions.use_version(settings, fetched["name"])
     paths = comfy_paths(settings)
@@ -87,10 +86,9 @@ def test_fetch_use_version_links_current_and_models(tmp_path):
     assert state["current_commit"] == commit
 
 
-def test_link_models_refuses_existing_real_models_dir(tmp_path):
-    repo, _commit = make_repo(tmp_path)
-    settings = comfy_settings(tmp_path, str(repo))
-    fetched = versions.fetch_version(settings, "HEAD")
+def test_link_models_refuses_existing_real_models_dir(tmp_path, fake_comfy_archive):
+    settings = comfy_settings(tmp_path)
+    fetched = versions.fetch_version(settings, "v0.36.0")
     version_dir = comfy_paths(settings).versions / fetched["name"]
     (version_dir / "models").mkdir()
 
