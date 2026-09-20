@@ -127,7 +127,7 @@ class ObservabilitySettings(ConfigSection):
 
 class ComfySettings(ConfigSection):
     workspace_dir: str = "/data/wangqiao/comfy-shell-v3-workspace"
-    repo_url: str = "https://github.com/comfyanonymous/ComfyUI.git"
+    repo_url: str = "https://github.com/Comfy-Org/ComfyUI.git"
     host: str = "127.0.0.1"
     port: int = Field(default=8188, ge=1, le=65535)
     python: str = "python"
