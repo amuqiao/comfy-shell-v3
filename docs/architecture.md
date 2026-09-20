@@ -200,6 +200,7 @@ RemoteSettings      # 新增：仅 local 环境使用，远程主机和远程代
 - `current` 只指向已导入 runtime 的 `ComfyUI/`。
 - `current-env` 只指向同一个 runtime 的 `.venv/`，ComfyUI 启动只能使用 `current-env/bin/python`。
 - 从 zip 准备新 runtime 时，只能复制已有 seed runtime 的 venv，生成独立 `.venv/`，不能让两个 runtime 共用同一个 venv。
+- runtime 级依赖修复只作用于目标 runtime 的独立 `.venv/`，记录到 `docs/runbooks/runtime-patches.md`，不反向污染 seed runtime。
 - `versions/` 和 `envs/` 只作为低层归档/排障能力存在，不是日常路径。
 - `models/` 是唯一模型真源。
 - `current/models` 只能是指向 workspace `models/` 的软链接。
@@ -271,6 +272,7 @@ COMFY__PORT=8188
 | 初始化 workspace | 创建 `runtimes/staging/versions/envs/models/logs/run/state.json`。 |
 | 导入 runtime | 复制一个已验证可运行的 ComfyUI 目录和 venv 到 `runtimes/<name>/`，写入 `runtimes.json`。 |
 | 从 zip 准备 runtime | 从 `staging/` 中的 ComfyUI zip 解压源码，复制 seed runtime 的 venv，写入 `runtimes.json`。 |
+| runtime patch 记录 | 记录已验证 runtime 的依赖修复和兼容补丁，方便重建或迁移。 |
 | 切换 runtime | 停止服务后更新 `current` 和 `current-env` 软链接，并链接 `current/models`。 |
 | 共享 models | workspace `models/` 是真源，版本目录只保留软链接。 |
 | 下载模型 | 支持 HF endpoint/token，下载到指定模型子目录。 |
@@ -292,6 +294,7 @@ COMFY__PORT=8188
 - 不做公网部署。
 - 不做插件市场。
 - 不自动覆盖已有模型目录。
+- 不把某个 runtime 的依赖补丁自动套到所有版本。
 - 不在远程机器上直接编辑源码作为常规流程。
 
 这些不是永远不能做，而是不进入第一版架构。

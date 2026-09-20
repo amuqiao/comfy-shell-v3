@@ -6,12 +6,15 @@
 - 提交信息优先写“改了什么”和对象，不写空泛标题。
 - 只在用户明确要求时提交；非明确要求下不做 `amend`，不改写历史。
 
-# 本地服务启停规则
-- `scripts/dev.sh` 只管理宿主机本地 FastAPI API 进程。
+# 服务启停规则
+- `scripts/dev.sh` 管理当前代码目录内的精确生命周期，支持 FastAPI API 和 ComfyUI 原子进程。
   - 启动 API：`./scripts/dev.sh start api`
   - 停止 API：`./scripts/dev.sh stop api`
   - 重启 API：`./scripts/dev.sh restart api`
   - 查看 API：`./scripts/dev.sh status`
+  - 启动 ComfyUI：`./scripts/dev.sh start comfyui`
+  - 停止 ComfyUI：`./scripts/dev.sh stop comfyui`
+  - 查看 ComfyUI：`./scripts/dev.sh status comfyui`
 - `scripts/deploy.sh` 只管理 Docker/Compose 服务。
   - 仅 Docker 依赖：`./scripts/deploy.sh up|status|down compose-deps`
   - 全 Docker API / 依赖：`./scripts/deploy.sh up|status|down compose-full`
@@ -26,6 +29,46 @@
 - 不要新增或使用 `./scripts/run.sh down all`；`./scripts/run.sh down dev` 已表示停止日常 dev 环境全集。
 - 排查状态优先使用 `status`，不要直接用 `docker stop`、`kill` 或手工清理 PID，除非用户明确要求。
 - 验证文档或脚本帮助时，不要执行会改变服务状态的 `up` / `down`，除非任务目标就是验证启停行为。
+
+# ComfyUI Shell 远端运维规则
+- 本项目的常用目标是：远端 GPU 机器启动一个 ComfyUI 服务，本机 macOS 通过 SSH tunnel 在浏览器访问 `http://127.0.0.1:8188/`。
+- 远端固定代码目录：`/data/wangqiao/comfy-shell-v3`。
+- 远端固定 workspace：`/data/wangqiao/comfy-shell-v3-workspace`。
+  - `runtimes/` 放不同 ComfyUI runtime。
+  - `current` 指向当前选中的 `ComfyUI/`。
+  - `current-env` 指向当前选中的 `.venv/`。
+  - `models/` 是唯一模型真源。
+  - `current/models` 必须是指向 workspace `models/` 的软链接。
+- 本机侧远程状态检查优先使用：`./scripts/run.sh remote status`。
+- 本机侧建立 tunnel 优先使用：`./scripts/run.sh remote tunnel`。
+- 本机浏览器访问 ComfyUI：`http://127.0.0.1:8188/`。
+- 远端服务日常入口只用 `run.sh`：
+  - 查看全集：`cd /data/wangqiao/comfy-shell-v3 && ./scripts/run.sh status dev`
+  - 启动全集：`cd /data/wangqiao/comfy-shell-v3 && ./scripts/run.sh up dev`
+  - 停止全集：`cd /data/wangqiao/comfy-shell-v3 && ./scripts/run.sh down dev`
+  - 重启全集：`cd /data/wangqiao/comfy-shell-v3 && ./scripts/run.sh restart dev`
+- 精确排障入口才使用 `dev.sh`：
+  - 只停 ComfyUI：`./scripts/dev.sh stop comfyui`
+  - 只启 ComfyUI：`./scripts/dev.sh start comfyui`
+  - 只看 ComfyUI：`./scripts/dev.sh status comfyui`
+  - 只看日志：`./scripts/run.sh logs comfyui`
+- 切换 ComfyUI runtime 必须先停止 ComfyUI，再切换，再启动：
+  - `./scripts/dev.sh stop comfyui`
+  - `./scripts/run.sh switch <runtime-name>`
+  - `./scripts/dev.sh start comfyui`
+- 同一时刻只允许一个 ComfyUI runtime 作为 current；不要同时启动多个 8188 ComfyUI 服务。
+- 不要手工改 `current`、`current-env`、`current/models` 软链接；使用 `./scripts/run.sh switch <runtime-name>`。
+- 不要为不同 ComfyUI runtime 复制多份 models；模型统一维护在 `/data/wangqiao/comfy-shell-v3-workspace/models`。
+- 不要在远端开发机器上直接编辑项目源码；常规路径是本机修改、验证、提交、推送，远端 `git pull --ff-only`。
+- 不要在排障时直接运行完整 `requirements.txt` 或升级 Torch/CUDA，除非用户明确要求。优先复用已验证 runtime 的 `.venv`，只在目标 runtime 的独立 `.venv` 内做最小依赖修复。
+- 不要修改 `comfyui-0.27.0-known-good` runtime 的源码或 `.venv`，它是回滚和 seed 环境。
+- 当前已跑通的 runtime：
+  - `comfyui-0.36.0`
+  - ComfyUI commit：`ee71d5c4993f29086b27fde1629a945ae48425bf`
+  - 运行 Python：`/data/wangqiao/comfy-shell-v3-workspace/runtimes/comfyui-0.36.0/.venv/bin/python`
+  - 远端监听：`127.0.0.1:8188`
+- `comfyui-0.36.0` 的依赖修复记录在 `docs/runbooks/runtime-patches.md`。重建该 runtime 或迁移机器时，先读这份文档。
+- 如果本机 `8188` / `8700` 被旧 `ssh -L` 占用，先用 `./scripts/run.sh remote status` 判断远端是否正常；停止本机旧 tunnel 前应确认它确实是本项目 tunnel。
 
 # 配置规则
 - ./scripts 不应把可动态推导的路径、目录、端口列表、派生配置或脚本私有常量写入 .env / .env.example。应用配置只保存应用运行所需的显式输入；脚本内部行为优先从仓库结构、应用配置动态推导，无法推导时使用脚本内默认常量，并可按需支持临时 shell env 覆盖。
