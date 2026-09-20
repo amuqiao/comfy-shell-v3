@@ -70,7 +70,7 @@ comfy_port() {
 
 remote_run() {
   local command="$1"
-  ssh "$(remote_host)" "cd '$(remote_code_dir)' && $command"
+  ssh "$(remote_host)" "export PATH=\"\$HOME/.local/bin:\$HOME/.cargo/bin:\$PATH\"; cd '$(remote_code_dir)' && $command"
 }
 
 deploy() {
