@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from app.comfy import archives
 from app.comfy.lock import WorkspaceLock
 from app.comfy.models import link_models_unlocked, validate_models_link_target
 from app.comfy.paths import ComfyPaths, comfy_paths
@@ -130,6 +131,60 @@ def import_runtime(settings: AppSettings, name: str, comfy_dir: str, venv_dir: s
         (target_root / RUNTIME_META).write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         registry[runtime_name] = meta
         write_registry(paths, registry)
+        return meta
+
+
+def stage_runtime_from_zip(settings: AppSettings, name: str, archive: str, seed_runtime: str) -> dict[str, Any]:
+    paths = init_workspace(settings)
+    runtime_name = safe_runtime_name(name)
+    seed_runtime_name = safe_runtime_name(seed_runtime)
+    archive_path = Path(archive).expanduser().resolve()
+    if not archive_path.is_file():
+        raise AppError("RESOURCE_NOT_FOUND", details={"resource": "runtime_archive", "path": str(archive_path)})
+
+    target_root = runtime_root(paths, runtime_name)
+    target_comfy_dir = runtime_comfy_dir(paths, runtime_name)
+    target_venv_dir = runtime_venv_dir(paths, runtime_name)
+    extract_dir = paths.staging / f".extract-{runtime_name}"
+
+    with WorkspaceLock(paths.lock_file):
+        registry = read_registry(paths)
+        if runtime_name in registry or target_root.exists():
+            raise AppError("RESOURCE_CONFLICT", details={"reason": "runtime_exists", "name": runtime_name})
+        if seed_runtime_name not in registry:
+            raise AppError("RESOURCE_NOT_FOUND", details={"resource": "seed_runtime", "name": seed_runtime_name})
+
+        seed_meta = runtime_info(paths, seed_runtime_name)
+        seed_venv_dir = Path(seed_meta["venv_dir"])
+        commit = archives.archive_commit(archive_path)
+        shutil.rmtree(extract_dir, ignore_errors=True)
+        meta: dict[str, Any]
+        try:
+            archives.extract_github_archive(archive_path, target_comfy_dir, extract_dir)
+            validate_models_link_target(paths, target_comfy_dir / "models")
+            copy_tree(seed_venv_dir, target_venv_dir)
+            validate_runtime_paths(target_comfy_dir, target_venv_dir)
+            meta = {
+                "name": runtime_name,
+                "comfy_dir": str(target_comfy_dir),
+                "venv_dir": str(target_venv_dir),
+                "python": str(runtime_python_from_venv(target_venv_dir)),
+                "source_archive": str(archive_path),
+                "seed_runtime": seed_runtime_name,
+                "seed_venv_dir": str(seed_venv_dir),
+                "commit": commit,
+                "staged_at": utc_now(),
+            }
+            target_root.mkdir(parents=True, exist_ok=True)
+            (target_root / RUNTIME_META).write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            registry[runtime_name] = meta
+            write_registry(paths, registry)
+        except Exception:
+            registry.pop(runtime_name, None)
+            shutil.rmtree(target_root, ignore_errors=True)
+            raise
+        finally:
+            shutil.rmtree(extract_dir, ignore_errors=True)
         return meta
 
 

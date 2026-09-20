@@ -35,6 +35,8 @@ Usage:
   envs ...      低层环境排障工具：list/current/prepare。
   import-runtime <name> --comfy-dir <path> --venv-dir <path>
                 复制已有可运行 ComfyUI runtime 到 workspace 规范位置。
+  stage-runtime <name> --archive <zip> --seed-runtime <name>
+                从 ComfyUI zip 和已有 runtime venv 准备一个新 runtime。
   switch <name>  切换到已导入 runtime，并链接共享 models。
   models ...    管理共享 models：list/link/download。
   remote ...    本机侧远程操作：deploy/status/logs/shell/tunnel/sync-dev。
@@ -57,6 +59,7 @@ Usage:
   ./scripts/run.sh status dev
   ./scripts/run.sh logs comfyui
   ./scripts/run.sh import-runtime comfyui-0.27.0 --comfy-dir /data/wangqiao/comfy-shell/ComfyUI --venv-dir /data/wangqiao/comfy-shell/.venv
+  ./scripts/run.sh stage-runtime comfyui-0.36.0 --archive /data/wangqiao/comfy-shell-v3-workspace/staging/ComfyUI-0.36.0.zip --seed-runtime comfyui-0.27.0-known-good
   ./scripts/run.sh switch comfyui-0.27.0
   ./scripts/run.sh runtimes list
   ./scripts/run.sh runtimes current
@@ -213,6 +216,23 @@ Exit Codes:
   其他非 0 由 ComfyUI shell CLI 透传
 EOF
       ;;
+    stage-runtime)
+      cat <<'EOF'
+Usage:
+  ./scripts/run.sh stage-runtime <name> --archive <zip> --seed-runtime <name>
+
+职责:
+  从一个 ComfyUI zip 源码包和一个已导入 runtime 的 venv 复制出新 runtime，写入 workspace/runtimes.json。
+
+常用示例:
+  ./scripts/run.sh stage-runtime comfyui-0.36.0 --archive /data/wangqiao/comfy-shell-v3-workspace/staging/ComfyUI-0.36.0.zip --seed-runtime comfyui-0.27.0-known-good
+
+Exit Codes:
+  0  成功
+  2  参数错误
+  其他非 0 由 ComfyUI shell CLI 透传
+EOF
+      ;;
     models)
       cat <<'EOF'
 Usage:
@@ -339,6 +359,11 @@ run_import_runtime() {
   "$ROOT_DIR/scripts/dev.sh" comfy runtimes import "$@"
 }
 
+run_stage_runtime() {
+  [[ $# -gt 0 ]] || die "usage: ./scripts/run.sh stage-runtime <name> --archive <zip> --seed-runtime <name>" 2
+  "$ROOT_DIR/scripts/dev.sh" comfy runtimes stage-zip "$@"
+}
+
 run_models() {
   [[ $# -gt 0 ]] || die "usage: ./scripts/run.sh models <list|link|download> [args...]" 2
   "$ROOT_DIR/scripts/dev.sh" comfy models "$@"
@@ -413,6 +438,11 @@ case "$cmd" in
     shift
     if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
     run_import_runtime "$@"
+    ;;
+  stage-runtime)
+    shift
+    if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
+    run_stage_runtime "$@"
     ;;
   models)
     shift

@@ -195,6 +195,7 @@ Usage:
 常用示例:
   ./scripts/dev.sh comfy workspace init
   ./scripts/dev.sh comfy runtimes import comfyui-0.27.0 --comfy-dir /data/wangqiao/comfy-shell/ComfyUI --venv-dir /data/wangqiao/comfy-shell/.venv
+  ./scripts/dev.sh comfy runtimes stage-zip comfyui-0.36.0 --archive /data/wangqiao/comfy-shell-v3-workspace/staging/ComfyUI-0.36.0.zip --seed-runtime comfyui-0.27.0-known-good
   ./scripts/dev.sh comfy runtimes use comfyui-0.27.0
   ./scripts/dev.sh comfy models link
   ./scripts/dev.sh comfy service status

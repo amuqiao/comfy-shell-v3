@@ -10,6 +10,7 @@ from app.core.config import AppSettings
 class ComfyPaths:
     root: Path
     runtimes: Path
+    staging: Path
     versions: Path
     envs: Path
     models: Path
@@ -32,6 +33,7 @@ def comfy_paths(settings: AppSettings) -> ComfyPaths:
     return ComfyPaths(
         root=root,
         runtimes=root / "runtimes",
+        staging=root / "staging",
         versions=root / "versions",
         envs=root / "envs",
         models=root / "models",

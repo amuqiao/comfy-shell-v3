@@ -51,8 +51,14 @@ def download_github_archive(repo_url: str, ref: str, archive_path: Path) -> None
 
 
 def archive_commit(archive_path: Path) -> str:
-    with zipfile.ZipFile(archive_path) as archive:
-        commit = archive.comment.decode("utf-8").strip()
+    try:
+        with zipfile.ZipFile(archive_path) as archive:
+            commit = archive.comment.decode("utf-8").strip()
+    except (OSError, UnicodeDecodeError, zipfile.BadZipFile) as exc:
+        raise AppError(
+            "DEPENDENCY_UNAVAILABLE",
+            details={"dependency": "github", "reason": "invalid_archive", "path": str(archive_path)},
+        ) from exc
     if not COMMIT_RE.fullmatch(commit):
         raise AppError(
             "DEPENDENCY_UNAVAILABLE",
@@ -66,22 +72,30 @@ def extract_github_archive(archive_path: Path, target_dir: Path, extract_dir: Pa
     if target_dir.exists():
         raise AppError("RESOURCE_CONFLICT", details={"reason": "version_dir_exists", "path": str(target_dir)})
 
-    with zipfile.ZipFile(archive_path) as archive:
-        top_levels: set[str] = set()
-        for item in archive.infolist():
-            path = PurePosixPath(item.filename)
-            if path.is_absolute() or ".." in path.parts or not path.parts:
+    try:
+        with zipfile.ZipFile(archive_path) as archive:
+            top_levels: set[str] = set()
+            for item in archive.infolist():
+                path = PurePosixPath(item.filename)
+                if path.is_absolute() or ".." in path.parts or not path.parts:
+                    raise AppError(
+                        "DEPENDENCY_UNAVAILABLE",
+                        details={"dependency": "github", "reason": "unsafe_archive_path", "path": item.filename},
+                    )
+                top_levels.add(path.parts[0])
+            if len(top_levels) != 1:
                 raise AppError(
                     "DEPENDENCY_UNAVAILABLE",
-                    details={"dependency": "github", "reason": "unsafe_archive_path", "path": item.filename},
+                    details={"dependency": "github", "reason": "unexpected_archive_layout"},
                 )
-            top_levels.add(path.parts[0])
-        if len(top_levels) != 1:
-            raise AppError(
-                "DEPENDENCY_UNAVAILABLE",
-                details={"dependency": "github", "reason": "unexpected_archive_layout"},
-            )
-        archive.extractall(extract_dir)
+            archive.extractall(extract_dir)
+    except AppError:
+        raise
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise AppError(
+            "DEPENDENCY_UNAVAILABLE",
+            details={"dependency": "github", "reason": "invalid_archive", "path": str(archive_path)},
+        ) from exc
 
     extracted_root = extract_dir / next(iter(top_levels))
     extracted_root.rename(target_dir)

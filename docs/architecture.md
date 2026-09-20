@@ -173,6 +173,8 @@ RemoteSettings      # 新增：仅 local 环境使用，远程主机和远程代
       ComfyUI/
       .venv/
       .comfy-shell-runtime.json
+  staging/
+    ComfyUI-0.36.0.zip
   runtimes.json
   current -> runtimes/comfyui-0.27.0/ComfyUI
   current-env -> runtimes/comfyui-0.27.0/.venv
@@ -194,8 +196,10 @@ RemoteSettings      # 新增：仅 local 环境使用，远程主机和远程代
 关键规则：
 
 - `runtimes.json` 是已导入 runtime 的注册表，记录 name、ComfyUI 路径、venv 路径和来源。
+- `staging/` 只放准备导入 runtime 的临时归档文件，不是运行真源。
 - `current` 只指向已导入 runtime 的 `ComfyUI/`。
 - `current-env` 只指向同一个 runtime 的 `.venv/`，ComfyUI 启动只能使用 `current-env/bin/python`。
+- 从 zip 准备新 runtime 时，只能复制已有 seed runtime 的 venv，生成独立 `.venv/`，不能让两个 runtime 共用同一个 venv。
 - `versions/` 和 `envs/` 只作为低层归档/排障能力存在，不是日常路径。
 - `models/` 是唯一模型真源。
 - `current/models` 只能是指向 workspace `models/` 的软链接。
@@ -264,8 +268,9 @@ COMFY__PORT=8188
 
 | 能力 | 最小行为 |
 | --- | --- |
-| 初始化 workspace | 创建 `runtimes/versions/envs/models/logs/run/state.json`。 |
+| 初始化 workspace | 创建 `runtimes/staging/versions/envs/models/logs/run/state.json`。 |
 | 导入 runtime | 复制一个已验证可运行的 ComfyUI 目录和 venv 到 `runtimes/<name>/`，写入 `runtimes.json`。 |
+| 从 zip 准备 runtime | 从 `staging/` 中的 ComfyUI zip 解压源码，复制 seed runtime 的 venv，写入 `runtimes.json`。 |
 | 切换 runtime | 停止服务后更新 `current` 和 `current-env` 软链接，并链接 `current/models`。 |
 | 共享 models | workspace `models/` 是真源，版本目录只保留软链接。 |
 | 下载模型 | 支持 HF endpoint/token，下载到指定模型子目录。 |

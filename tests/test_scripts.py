@@ -923,6 +923,32 @@ def test_run_import_runtime_dispatches_to_comfy_cli(tmp_path):
     ]
 
 
+def test_run_stage_runtime_dispatches_to_comfy_cli(tmp_path):
+    root, log_file = fake_run_root(tmp_path)
+
+    result = subprocess.run(
+        [
+            "./scripts/run.sh",
+            "stage-runtime",
+            "comfyui-0.36.0",
+            "--archive",
+            "/workspace/staging/ComfyUI-0.36.0.zip",
+            "--seed-runtime",
+            "comfyui-0.27.0-known-good",
+        ],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert log_file.read_text().splitlines() == [
+        "dev comfy runtimes stage-zip comfyui-0.36.0 --archive /workspace/staging/ComfyUI-0.36.0.zip --seed-runtime comfyui-0.27.0-known-good"
+    ]
+
+
 def test_run_switch_uses_runtime_links_and_shows_current(tmp_path):
     root, log_file = fake_run_root(tmp_path)
 
@@ -1275,6 +1301,7 @@ def test_run_help_documents_daily_dev_contract():
     assert "restart dev" in result.stdout
     assert "check dev" in result.stdout
     assert "import-runtime comfyui-0.27.0" in result.stdout
+    assert "stage-runtime comfyui-0.36.0" in result.stdout
     assert "runtimes list" in result.stdout
     assert "remote deploy" in result.stdout
     assert "dev recipe 表示当前项目在远程开发机上的日常运行全集" in result.stdout
@@ -1283,7 +1310,7 @@ def test_run_help_documents_daily_dev_contract():
 
 @pytest.mark.parametrize(
     "action",
-    ["check", "restart", "runtimes", "versions", "switch", "import-runtime", "models", "remote", "logs"],
+    ["check", "restart", "runtimes", "versions", "switch", "import-runtime", "stage-runtime", "models", "remote", "logs"],
 )
 def test_run_action_help_does_not_execute_recipe(tmp_path, action):
     root, log_file = fake_run_root(tmp_path)
@@ -1325,6 +1352,7 @@ def test_run_rejects_missing_recipe(tmp_path, action):
         ("versions", "usage: ./scripts/run.sh versions <list|current|fetch|use> [args...]"),
         ("switch", "usage: ./scripts/run.sh switch <name>"),
         ("import-runtime", "usage: ./scripts/run.sh import-runtime <name> --comfy-dir <path> --venv-dir <path>"),
+        ("stage-runtime", "usage: ./scripts/run.sh stage-runtime <name> --archive <zip> --seed-runtime <name>"),
         ("models", "usage: ./scripts/run.sh models <list|link|download> [args...]"),
         ("remote", "usage: ./scripts/run.sh remote <deploy|status|logs|shell|tunnel|sync-dev> [args...]"),
     ],

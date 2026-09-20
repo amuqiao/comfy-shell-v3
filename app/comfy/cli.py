@@ -47,6 +47,10 @@ def build_parser() -> argparse.ArgumentParser:
     runtime_import.add_argument("name")
     runtime_import.add_argument("--comfy-dir", required=True)
     runtime_import.add_argument("--venv-dir", required=True)
+    runtime_stage_zip = runtime_subparsers.add_parser("stage-zip")
+    runtime_stage_zip.add_argument("name")
+    runtime_stage_zip.add_argument("--archive", required=True)
+    runtime_stage_zip.add_argument("--seed-runtime", required=True)
     runtime_use = runtime_subparsers.add_parser("use")
     runtime_use.add_argument("name")
     runtime_subparsers.add_parser("list")
@@ -93,6 +97,8 @@ def run(args: argparse.Namespace) -> Any:
         return envs.current_env(settings)
     if args.domain == "runtimes" and args.action == "import":
         return runtimes.import_runtime(settings, args.name, args.comfy_dir, args.venv_dir)
+    if args.domain == "runtimes" and args.action == "stage-zip":
+        return runtimes.stage_runtime_from_zip(settings, args.name, args.archive, args.seed_runtime)
     if args.domain == "runtimes" and args.action == "use":
         return runtimes.use_runtime(settings, args.name)
     if args.domain == "runtimes" and args.action == "list":

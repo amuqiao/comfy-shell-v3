@@ -108,6 +108,7 @@ def test_workspace_init_creates_runtime_layout(tmp_path):
     assert paths.versions.is_dir()
     assert paths.envs.is_dir()
     assert paths.runtimes.is_dir()
+    assert paths.staging.is_dir()
     assert paths.models.is_dir()
     assert paths.logs.is_dir()
     assert paths.run.is_dir()
@@ -135,6 +136,83 @@ def test_import_use_runtime_links_current_models_and_env(tmp_path, fake_runtime_
     state = json.loads(paths.state_file.read_text(encoding="utf-8"))
     assert state["current_runtime"] == "comfyui-0.27.0"
     assert state["current_env_python"].endswith("/runtimes/comfyui-0.27.0/.venv/bin/python")
+
+
+def test_stage_runtime_from_zip_copies_seed_env_and_writes_registry(tmp_path, fake_runtime_source, fake_runtime_copy):
+    settings = comfy_settings(tmp_path)
+    source_comfy_dir, source_venv_dir = fake_runtime_source
+    archive_path, commit = make_archive(tmp_path)
+
+    runtimes.import_runtime(settings, "comfyui-0.27.0", str(source_comfy_dir), str(source_venv_dir))
+    staged = runtimes.stage_runtime_from_zip(
+        settings,
+        "comfyui-0.36.0",
+        str(archive_path),
+        "comfyui-0.27.0",
+    )
+    paths = comfy_paths(settings)
+
+    assert staged["name"] == "comfyui-0.36.0"
+    assert staged["commit"] == commit
+    assert staged["seed_runtime"] == "comfyui-0.27.0"
+    assert Path(staged["comfy_dir"]) == paths.runtimes / "comfyui-0.36.0" / "ComfyUI"
+    assert Path(staged["venv_dir"]) == paths.runtimes / "comfyui-0.36.0" / ".venv"
+    assert Path(staged["venv_dir"]).resolve() != Path(staged["seed_venv_dir"]).resolve()
+    assert (Path(staged["comfy_dir"]) / "main.py").is_file()
+    assert (Path(staged["venv_dir"]) / "bin" / "python").is_file()
+    registry = json.loads(paths.runtime_registry_file.read_text(encoding="utf-8"))
+    assert registry["comfyui-0.36.0"]["source_archive"] == str(archive_path)
+    assert not paths.current.exists()
+
+
+def test_stage_runtime_from_zip_cleans_target_when_registry_write_fails(
+    tmp_path,
+    fake_runtime_source,
+    fake_runtime_copy,
+    monkeypatch,
+):
+    settings = comfy_settings(tmp_path)
+    source_comfy_dir, source_venv_dir = fake_runtime_source
+    archive_path, _commit = make_archive(tmp_path)
+    runtimes.import_runtime(settings, "comfyui-0.27.0", str(source_comfy_dir), str(source_venv_dir))
+    paths = comfy_paths(settings)
+
+    def failing_write_registry(_paths, _registry):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(runtimes, "write_registry", failing_write_registry)
+
+    with pytest.raises(OSError):
+        runtimes.stage_runtime_from_zip(settings, "comfyui-0.36.0", str(archive_path), "comfyui-0.27.0")
+
+    assert not (paths.runtimes / "comfyui-0.36.0").exists()
+
+
+def test_stage_runtime_from_zip_reports_bad_archive(tmp_path, fake_runtime_source, fake_runtime_copy):
+    settings = comfy_settings(tmp_path)
+    source_comfy_dir, source_venv_dir = fake_runtime_source
+    bad_archive = tmp_path / "bad.zip"
+    bad_archive.write_text("not a zip", encoding="utf-8")
+    runtimes.import_runtime(settings, "comfyui-0.27.0", str(source_comfy_dir), str(source_venv_dir))
+    paths = comfy_paths(settings)
+
+    with pytest.raises(AppError) as exc:
+        runtimes.stage_runtime_from_zip(settings, "comfyui-0.36.0", str(bad_archive), "comfyui-0.27.0")
+
+    assert exc.value.code == "DEPENDENCY_UNAVAILABLE"
+    assert exc.value.details["reason"] == "invalid_archive"
+    assert not (paths.runtimes / "comfyui-0.36.0").exists()
+
+
+def test_stage_runtime_from_zip_requires_seed_runtime(tmp_path):
+    settings = comfy_settings(tmp_path)
+    archive_path, _commit = make_archive(tmp_path)
+
+    with pytest.raises(AppError) as exc:
+        runtimes.stage_runtime_from_zip(settings, "comfyui-0.36.0", str(archive_path), "missing-seed")
+
+    assert exc.value.code == "RESOURCE_NOT_FOUND"
+    assert exc.value.details["resource"] == "seed_runtime"
 
 
 def test_import_runtime_requires_executable_python(tmp_path, fake_runtime_source, fake_runtime_copy):
