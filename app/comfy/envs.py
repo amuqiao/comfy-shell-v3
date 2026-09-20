@@ -26,8 +26,6 @@ def run_tool(args: list[str]) -> str:
         [executable, *args[1:]],
         check=False,
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
     )
     if result.returncode != 0:
         raise AppError(
@@ -35,11 +33,10 @@ def run_tool(args: list[str]) -> str:
             details={
                 "dependency": args[0],
                 "command": args,
-                "stdout": result.stdout.strip(),
-                "stderr": result.stderr.strip(),
+                "returncode": result.returncode,
             },
         )
-    return result.stdout.strip()
+    return ""
 
 
 def env_dir_for(paths: ComfyPaths, version_name: str) -> Path:
