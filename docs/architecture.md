@@ -191,6 +191,7 @@ RemoteSettings      # 新增：仅 local 环境使用，远程主机和远程代
 - `version-id` 必须包含 resolved commit，不能只叫 `main`。
 - `models/` 是唯一模型真源。
 - `current/models` 只能是指向 workspace `models/` 的软链接。
+- 版本 archive 自带的 `models/` 模板会在首次使用时合并进 workspace `models/`；同名不同内容直接报冲突。
 - 切换版本、链接 models、启动/停止服务都必须加 workspace lock。
 - 服务运行时拒绝切换版本。
 

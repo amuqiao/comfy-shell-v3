@@ -38,6 +38,8 @@ def make_archive(tmp_path: Path) -> tuple[Path, str]:
     with zipfile.ZipFile(archive_path, "w") as archive:
         archive.comment = commit.encode("utf-8")
         archive.writestr("ComfyUI-0.36.0/main.py", "print('comfy test')\n")
+        archive.writestr("ComfyUI-0.36.0/models/configs/demo.yaml", "model: demo\n")
+        archive.writestr("ComfyUI-0.36.0/models/checkpoints/put_checkpoints_here", "")
     return archive_path, commit
 
 
@@ -81,22 +83,26 @@ def test_fetch_use_version_links_current_and_models(tmp_path, fake_comfy_archive
     assert paths.current.resolve() == paths.versions / fetched["name"]
     assert (paths.current / "models").is_symlink()
     assert (paths.current / "models").resolve() == paths.models.resolve()
+    assert (paths.models / "configs" / "demo.yaml").read_text(encoding="utf-8") == "model: demo\n"
+    assert (paths.models / "checkpoints" / "put_checkpoints_here").is_file()
     state = json.loads(paths.state_file.read_text(encoding="utf-8"))
     assert state["current_version"] == fetched["name"]
     assert state["current_commit"] == commit
 
 
-def test_link_models_refuses_existing_real_models_dir(tmp_path, fake_comfy_archive):
+def test_link_models_refuses_seed_file_conflict(tmp_path, fake_comfy_archive):
     settings = comfy_settings(tmp_path)
     fetched = versions.fetch_version(settings, "v0.36.0")
-    version_dir = comfy_paths(settings).versions / fetched["name"]
-    (version_dir / "models").mkdir()
+    paths = comfy_paths(settings)
+    conflict = paths.models / "configs" / "demo.yaml"
+    conflict.parent.mkdir(parents=True)
+    conflict.write_text("model: different\n", encoding="utf-8")
 
     with pytest.raises(AppError) as exc:
         versions.use_version(settings, fetched["name"])
 
     assert exc.value.code == "RESOURCE_CONFLICT"
-    assert exc.value.details["reason"] == "models_path_is_not_symlink"
+    assert exc.value.details["reason"] == "models_seed_conflict"
 
 
 def test_list_models_returns_workspace_files(tmp_path):

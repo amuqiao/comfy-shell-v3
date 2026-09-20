@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import filecmp
 import os
+import shutil
 from pathlib import Path
 
 from app.comfy.lock import WorkspaceLock
@@ -31,12 +33,46 @@ def link_models_unlocked(paths: ComfyPaths) -> dict[str, str]:
             )
         return {"link": str(models_link), "target": str(expected)}
     if models_link.exists():
-        raise AppError("RESOURCE_CONFLICT", details={"reason": "models_path_is_not_symlink", "path": str(models_link)})
+        if not models_link.is_dir():
+            raise AppError(
+                "RESOURCE_CONFLICT",
+                details={"reason": "models_path_is_not_symlink", "path": str(models_link)},
+            )
+        merge_seed_models(models_link, paths.models)
     tmp = models_link.with_name(".models.tmp")
     tmp.unlink(missing_ok=True)
     tmp.symlink_to(os.path.relpath(paths.models.resolve(), start=models_link.parent.resolve()))
     os.replace(tmp, models_link)
     return {"link": str(models_link), "target": str(expected)}
+
+
+def merge_seed_models(source: Path, target: Path) -> None:
+    for source_item in sorted(source.rglob("*"), key=lambda value: len(value.relative_to(source).parts)):
+        relative = source_item.relative_to(source)
+        target_item = target / relative
+        if source_item.is_dir():
+            target_item.mkdir(parents=True, exist_ok=True)
+            continue
+        if not source_item.is_file():
+            raise AppError(
+                "RESOURCE_CONFLICT",
+                details={"reason": "models_seed_unsupported_path", "path": str(source_item)},
+            )
+        target_item.parent.mkdir(parents=True, exist_ok=True)
+        if target_item.exists():
+            if target_item.is_file() and filecmp.cmp(source_item, target_item, shallow=False):
+                source_item.unlink()
+                continue
+            raise AppError(
+                "RESOURCE_CONFLICT",
+                details={
+                    "reason": "models_seed_conflict",
+                    "source": str(source_item),
+                    "target": str(target_item),
+                },
+            )
+        source_item.rename(target_item)
+    shutil.rmtree(source)
 
 
 def list_models(settings: AppSettings) -> list[dict[str, object]]:
