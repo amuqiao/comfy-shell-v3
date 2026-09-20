@@ -934,6 +934,21 @@ def test_run_remote_dispatches_to_remote_script(tmp_path):
     assert log_file.read_text().splitlines() == ["remote logs comfyui"]
 
 
+def test_remote_missing_host_fails_before_ssh(tmp_path):
+    result = subprocess.run(
+        ["./scripts/remote.sh", "status"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ENV_FILE=str(tmp_path / "missing.env")),
+    )
+
+    assert result.returncode == 2
+    assert "REMOTE__HOST is required" in result.stderr
+    assert "ssh:" not in result.stderr
+
+
 def test_run_help_documents_daily_dev_contract():
     result = run_script("./scripts/run.sh", "help")
 
