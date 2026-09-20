@@ -233,6 +233,31 @@ Linux 远程
 
 远程机器一般不改代码。若需要临时同步未提交代码，只允许显式 `sync-dev`，并且使用独立代码目录、独立 workspace 和独立端口。
 
+## 端口与 Tunnel
+
+第一版只采用同名端口映射，不引入第二套 local/remote 端口配置：
+
+```text
+本机 127.0.0.1:8700 -> 远端 127.0.0.1:8700 -> Comfy shell API
+本机 127.0.0.1:8188 -> 远端 127.0.0.1:8188 -> ComfyUI Web
+```
+
+端口真源仍是 `.env`：
+
+```dotenv
+API_PORT=8700
+COMFY__PORT=8188
+```
+
+规则：
+
+- 远端服务只监听 `127.0.0.1`，不默认暴露公网。
+- 本机 `.env` 的 `API_PORT` 和 `COMFY__PORT` 必须与远端 `.env` 保持一致。
+- `remote.sh tunnel` 启动前必须拒绝本机端口占用。
+- `remote.sh tunnel` 启动前必须确认远端对应端口已经监听。
+- `remote.sh status` 必须展示 Port Map，先看映射关系，再看远端服务状态。
+- 如果未来确实需要本机端口与远端端口不同，再显式引入 `LOCAL__*` 和 `REMOTE__*_PORT`；第一版不做。
+
 ## 第一版能力
 
 第一版只做这些：
@@ -246,7 +271,8 @@ Linux 远程
 | 下载模型 | 支持 HF endpoint/token，下载到指定模型子目录。 |
 | 服务管理 | 启动、停止、状态、日志，只管理本项目拥有的 ComfyUI 进程。 |
 | API 控制面 | 暴露 runtime、模型、服务状态和启停接口，默认只绑定 `127.0.0.1`。 |
-| 脚本入口 | `run.sh` 负责日常 recipe，`dev.sh` 负责精确生命周期，`remote.sh` 负责 SSH。 |
+| 端口映射 | 本机 tunnel 与远端服务端口同名映射，`remote.sh status` 显示 Port Map。 |
+| 脚本入口 | `run.sh` 负责日常 recipe，`dev.sh` 负责精确生命周期，`remote.sh` 负责 SSH 和 tunnel。 |
 
 ## 不做的事情
 
@@ -302,6 +328,8 @@ Vite UI
 | branch ref 移动 | 版本身份记录 resolved commit。 |
 | PID 陈旧 | 报告 stale，只清理本项目 PID/meta，不 kill 不归属进程。 |
 | 端口被占用 | 启动前失败，不抢占。 |
+| 本机 tunnel 端口被占用 | tunnel 启动前失败，不抢占。 |
+| 远端服务端口未监听 | tunnel 启动前失败，提示先启动远端服务。 |
 | runtime 缺 `main.py` 或 `.venv/bin/python` | 导入或切换直接失败，不猜测路径。 |
 | 远程 tracked file 有本地修改 | deploy 失败，要求本机提交后再部署。 |
 | API 暴露到公网 | 第一版不支持，默认只绑定 `127.0.0.1`。 |

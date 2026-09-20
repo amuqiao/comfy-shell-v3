@@ -1020,6 +1020,253 @@ def test_remote_tunnel_missing_host_fails_before_ssh(tmp_path):
     assert "ssh:" not in result.stderr
 
 
+def write_local_remote_env(
+    tmp_path: Path,
+    *,
+    api_port: int,
+    comfy_port: int | None = None,
+    code_dir: Path | None = None,
+) -> Path:
+    env_file = tmp_path / "remote.env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "REMOTE__HOST=example.remote",
+                f"REMOTE__CODE_DIR={code_dir if code_dir is not None else '/remote/code'}",
+                "REMOTE__SYNC_CODE_DIR=/remote/sync",
+                f"API_PORT={api_port}",
+                f"COMFY__PORT={comfy_port if comfy_port is not None else unused_port()}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return env_file
+
+
+def write_fake_ssh(tmp_path: Path, script_body: str) -> tuple[Path, Path]:
+    bin_dir = tmp_path / "bin"
+    log_file = tmp_path / "ssh.log"
+    bin_dir.mkdir(exist_ok=True)
+    ssh = bin_dir / "ssh"
+    ssh.write_text(script_body.format(log_file=log_file), encoding="utf-8")
+    ssh.chmod(0o755)
+    return bin_dir, log_file
+
+
+def test_remote_tunnel_rejects_busy_local_api_port_before_ssh(tmp_path):
+    if not shutil.which("lsof"):
+        pytest.skip("lsof is required for local tunnel port ownership checks")
+    port = unused_port()
+    sleeper = subprocess.Popen(
+        [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        wait_for_tcp_port(port)
+        env_file = write_local_remote_env(tmp_path, api_port=port)
+
+        result = subprocess.run(
+            ["./scripts/remote.sh", "tunnel"],
+            cwd=ROOT_DIR,
+            text=True,
+            capture_output=True,
+            check=False,
+            env=script_env(tmp_path, ENV_FILE=str(env_file)),
+        )
+
+        assert result.returncode == 4
+        assert f"local api tunnel port {port} is already used" in result.stderr
+        assert "ssh:" not in result.stderr
+    finally:
+        sleeper.terminate()
+        sleeper.wait(timeout=5)
+
+
+def test_remote_tunnel_rejects_busy_local_comfy_port_before_ssh(tmp_path):
+    if not shutil.which("lsof"):
+        pytest.skip("lsof is required for local tunnel port ownership checks")
+    port = unused_port()
+    sleeper = subprocess.Popen(
+        [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        wait_for_tcp_port(port)
+        env_file = write_local_remote_env(tmp_path, api_port=unused_port(), comfy_port=port)
+
+        result = subprocess.run(
+            ["./scripts/remote.sh", "tunnel"],
+            cwd=ROOT_DIR,
+            text=True,
+            capture_output=True,
+            check=False,
+            env=script_env(tmp_path, ENV_FILE=str(env_file)),
+        )
+
+        assert result.returncode == 4
+        assert f"local comfyui tunnel port {port} is already used" in result.stderr
+        assert "ssh:" not in result.stderr
+    finally:
+        sleeper.terminate()
+        sleeper.wait(timeout=5)
+
+
+def test_remote_tunnel_rejects_same_api_and_comfy_port_before_ssh(tmp_path):
+    port = unused_port()
+    env_file = write_local_remote_env(tmp_path, api_port=port, comfy_port=port)
+
+    result = subprocess.run(
+        ["./scripts/remote.sh", "tunnel"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ENV_FILE=str(env_file)),
+    )
+
+    assert result.returncode == 2
+    assert "API_PORT and COMFY__PORT must be different" in result.stderr
+    assert "ssh:" not in result.stderr
+
+
+def test_remote_status_prints_port_map_before_remote_status(tmp_path):
+    env_file = write_local_remote_env(tmp_path, api_port=8700, comfy_port=8188)
+    bin_dir, log_file = write_fake_ssh(
+        tmp_path,
+        """#!/usr/bin/env sh
+echo "$@" >> "{log_file}"
+exit 0
+""",
+    )
+
+    result = subprocess.run(
+        ["./scripts/remote.sh", "status"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ENV_FILE=str(env_file), PATH=f"{bin_dir}:{os.environ['PATH']}"),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "== Port Map ==" in result.stdout
+    assert "api              tunnel       local 127.0.0.1:8700 -> example.remote:127.0.0.1:8700" in result.stdout
+    assert "comfyui          tunnel       local 127.0.0.1:8188 -> example.remote:127.0.0.1:8188" in result.stdout
+    assert "./scripts/run.sh status dev" in log_file.read_text(encoding="utf-8")
+
+
+def test_remote_tunnel_checks_remote_loopback_address(tmp_path):
+    remote_code = tmp_path / "remote-code"
+    remote_code.mkdir()
+    env_file = write_local_remote_env(
+        tmp_path,
+        api_port=unused_port(),
+        comfy_port=unused_port(),
+        code_dir=remote_code,
+    )
+    bin_dir = tmp_path / "bin"
+    log_file = tmp_path / "lsof.log"
+    bin_dir.mkdir()
+    ssh = bin_dir / "ssh"
+    ssh.write_text(
+        """#!/usr/bin/env sh
+host="$1"
+shift
+case "$1" in
+  export*) exec sh -c "$*" ;;
+  *) exit 0 ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    ssh.chmod(0o755)
+    lsof = bin_dir / "lsof"
+    lsof.write_text(
+        f"""#!/usr/bin/env sh
+echo "$@" >> "{log_file}"
+case "$*" in
+  *"-iTCP@127.0.0.1:"*) exit 1 ;;
+  *) exit 0 ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    lsof.chmod(0o755)
+
+    result = subprocess.run(
+        ["./scripts/remote.sh", "tunnel"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ENV_FILE=str(env_file), PATH=f"{bin_dir}:{os.environ['PATH']}"),
+    )
+
+    assert result.returncode == 4
+    assert "is not listening on 127.0.0.1" in result.stderr
+    assert "-iTCP@127.0.0.1:" in log_file.read_text(encoding="utf-8")
+
+
+def test_remote_tunnel_rejects_remote_port_not_listening_before_final_tunnel(tmp_path):
+    env_file = write_local_remote_env(tmp_path, api_port=unused_port(), comfy_port=unused_port())
+    bin_dir, log_file = write_fake_ssh(
+        tmp_path,
+        """#!/usr/bin/env sh
+echo "$@" >> "{log_file}"
+echo "ERROR: remote API_PORT port 8700 is not listening; start remote services before tunnel" >&2
+exit 4
+""",
+    )
+
+    result = subprocess.run(
+        ["./scripts/remote.sh", "tunnel"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ENV_FILE=str(env_file), PATH=f"{bin_dir}:{os.environ['PATH']}"),
+    )
+
+    assert result.returncode == 4
+    assert "remote API_PORT port" in result.stderr
+    assert "is not listening" in result.stderr
+    assert "\n-N " not in "\n" + log_file.read_text(encoding="utf-8")
+
+
+def test_remote_tunnel_uses_expected_ssh_port_forwards(tmp_path):
+    env_file = write_local_remote_env(tmp_path, api_port=unused_port(), comfy_port=unused_port())
+    bin_dir, log_file = write_fake_ssh(
+        tmp_path,
+        """#!/usr/bin/env sh
+echo "$@" >> "{log_file}"
+exit 0
+""",
+    )
+
+    result = subprocess.run(
+        ["./scripts/remote.sh", "tunnel"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ENV_FILE=str(env_file), PATH=f"{bin_dir}:{os.environ['PATH']}"),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    final_ssh = [line for line in log_file.read_text(encoding="utf-8").splitlines() if line.startswith("-N ")][-1]
+    assert "-N" in final_ssh
+    assert "example.remote" in final_ssh
+    assert "-L" in final_ssh
+    env_text = env_file.read_text(encoding="utf-8")
+    api_port = env_text.split("API_PORT=", 1)[1].splitlines()[0]
+    comfy_port = env_text.split("COMFY__PORT=", 1)[1].splitlines()[0]
+    assert f"{api_port}:127.0.0.1:{api_port}" in final_ssh
+    assert f"{comfy_port}:127.0.0.1:{comfy_port}" in final_ssh
+
+
 def test_run_help_documents_daily_dev_contract():
     result = run_script("./scripts/run.sh", "help")
 
