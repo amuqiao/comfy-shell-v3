@@ -103,6 +103,7 @@ app/
     comfy.py          # FastAPI 控制面路由
   comfy/
     versions.py       # download archive/materialize/use
+    envs.py           # per-version venv 准备与 current-env 软链接
     models.py         # shared models 和 current/models 软链接
     process.py        # ComfyUI start/stop/status/logs
     state.py          # workspace/state.json
@@ -169,7 +170,11 @@ RemoteSettings      # 新增：仅 local 环境使用，远程主机和远程代
   versions/
     ComfyUI-main-a1b2c3d/
     ComfyUI-v0.3.10-deadbee/
+  envs/
+    ComfyUI-main-a1b2c3d/
+    ComfyUI-v0.3.10-deadbee/
   current -> versions/ComfyUI-v0.3.10-deadbee
+  current-env -> envs/ComfyUI-v0.3.10-deadbee
   models/
     checkpoints/
     loras/
@@ -188,6 +193,7 @@ RemoteSettings      # 新增：仅 local 环境使用，远程主机和远程代
 关键规则：
 
 - `current` 只指向 `versions/<version-id>`。
+- `current-env` 只指向 `envs/<version-id>`，ComfyUI 启动只能使用 `current-env/bin/python`。
 - `version-id` 必须包含 resolved commit，不能只叫 `main`。
 - `models/` 是唯一模型真源。
 - `current/models` 只能是指向 workspace `models/` 的软链接。
@@ -231,9 +237,9 @@ Linux 远程
 
 | 能力 | 最小行为 |
 | --- | --- |
-| 初始化 workspace | 创建 `versions/models/logs/run/state.json`。 |
+| 初始化 workspace | 创建 `versions/envs/models/logs/run/state.json`。 |
 | 拉取版本 | 从 ComfyUI GitHub source archive 下载指定 ref，解析 archive commit，物化到 `versions/`。 |
-| 切换版本 | 停止服务后更新 `current` 软链接，并链接 `current/models`。 |
+| 切换版本 | 停止服务后准备 `envs/<version-id>`，更新 `current` 和 `current-env` 软链接，并链接 `current/models`。 |
 | 共享 models | workspace `models/` 是真源，版本目录只保留软链接。 |
 | 下载模型 | 支持 HF endpoint/token，下载到指定模型子目录。 |
 | 服务管理 | 启动、停止、状态、日志，只管理本项目拥有的 ComfyUI 进程。 |

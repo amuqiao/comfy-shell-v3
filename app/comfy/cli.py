@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from app.comfy import models, process, versions
+from app.comfy import envs, models, process, versions
 from app.comfy.workspace import init_workspace
 from app.core.config import get_settings
 from app.core.exceptions import AppError
@@ -33,6 +33,13 @@ def build_parser() -> argparse.ArgumentParser:
     version_use.add_argument("name")
     version_subparsers.add_parser("list")
     version_subparsers.add_parser("current")
+
+    env = subparsers.add_parser("envs")
+    env_subparsers = env.add_subparsers(dest="action", required=True)
+    env_prepare = env_subparsers.add_parser("prepare")
+    env_prepare.add_argument("name")
+    env_subparsers.add_parser("list")
+    env_subparsers.add_parser("current")
 
     model = subparsers.add_parser("models")
     model_subparsers = model.add_subparsers(dest="action", required=True)
@@ -67,6 +74,12 @@ def run(args: argparse.Namespace) -> Any:
         return {"items": versions.list_versions(settings)}
     if args.domain == "versions" and args.action == "current":
         return versions.current_version(settings)
+    if args.domain == "envs" and args.action == "prepare":
+        return envs.prepare_env(settings, args.name)
+    if args.domain == "envs" and args.action == "list":
+        return {"items": envs.list_envs(settings)}
+    if args.domain == "envs" and args.action == "current":
+        return envs.current_env(settings)
     if args.domain == "models" and args.action == "link":
         return models.link_models(settings)
     if args.domain == "models" and args.action == "list":

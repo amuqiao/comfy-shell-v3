@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from app.comfy import archives, process
+from app.comfy import archives, envs, process
 from app.comfy.lock import WorkspaceLock
 from app.comfy.models import link_models_unlocked
 from app.comfy.paths import comfy_paths
@@ -108,11 +108,13 @@ def use_version(settings: AppSettings, name: str) -> dict[str, Any]:
     with WorkspaceLock(paths.lock_file):
         if process.is_running(paths):
             raise AppError("RESOURCE_CONFLICT", details={"reason": "comfyui_running"})
+        env_meta = envs.prepare_env_unlocked(settings, paths, version_name=name, version_dir=target)
         tmp = paths.root / ".current.tmp"
         tmp.unlink(missing_ok=True)
         tmp.symlink_to(Path("versions") / name)
         os.replace(tmp, paths.current)
         link_models_unlocked(paths)
+        envs.use_env_unlocked(paths, name)
         meta = current_version(settings) or {"name": name, "path": str(target)}
         merge_state(
             paths.state_file,
@@ -120,6 +122,8 @@ def use_version(settings: AppSettings, name: str) -> dict[str, Any]:
                 "current_version": name,
                 "current_path": str(target),
                 "current_commit": meta.get("commit"),
+                "current_env": env_meta["env_path"],
+                "current_env_python": env_meta["python"],
             },
         )
         return meta

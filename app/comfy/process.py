@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from app.comfy import envs
 from app.comfy.paths import ComfyPaths, comfy_paths
 from app.core.config import AppSettings
 from app.core.exceptions import AppError
@@ -139,8 +140,9 @@ def start(settings: AppSettings) -> dict[str, Any]:
     paths.run.mkdir(parents=True, exist_ok=True)
     paths.logs.mkdir(parents=True, exist_ok=True)
     extra_args = settings.comfy.extra_args.split() if settings.comfy.extra_args.strip() else []
+    python = envs.current_env_python(paths)
     command = [
-        settings.comfy.python,
+        str(python),
         "main.py",
         "--listen",
         settings.comfy.host,
@@ -167,6 +169,7 @@ def start(settings: AppSettings) -> dict[str, Any]:
             "cwd": str(paths.current.resolve()),
             "workspace": str(paths.root),
             "url": f"http://{settings.comfy.host}:{settings.comfy.port}",
+            "python": str(python),
             "command": command,
         },
     )

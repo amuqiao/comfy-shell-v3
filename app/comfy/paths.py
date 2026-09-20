@@ -10,10 +10,12 @@ from app.core.config import AppSettings
 class ComfyPaths:
     root: Path
     versions: Path
+    envs: Path
     models: Path
     logs: Path
     run: Path
     current: Path
+    current_env: Path
     state_file: Path
     lock_file: Path
     comfyui_pid_file: Path
@@ -28,10 +30,12 @@ def comfy_paths(settings: AppSettings) -> ComfyPaths:
     return ComfyPaths(
         root=root,
         versions=root / "versions",
+        envs=root / "envs",
         models=root / "models",
         logs=logs,
         run=run,
         current=root / "current",
+        current_env=root / "current-env",
         state_file=root / "state.json",
         lock_file=run / "workspace.lock",
         comfyui_pid_file=run / "comfyui.pid",

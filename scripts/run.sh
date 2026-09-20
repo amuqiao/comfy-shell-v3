@@ -31,7 +31,8 @@ Usage:
   check dev     检查当前代码目录前置条件。
   logs <target> 查看日志，target 为 api 或 comfyui。
   versions ...  管理 ComfyUI 版本：list/current/fetch/use。
-  switch <ref>   拉取指定 ComfyUI ref，设置为 current，并链接共享 models。
+  envs ...      管理 ComfyUI 版本环境：list/current/prepare。
+  switch <ref>   拉取指定 ComfyUI ref，准备版本环境，设置 current，并链接共享 models。
   models ...    管理共享 models：list/link/download。
   remote ...    本机侧远程操作：deploy/status/logs/shell/tunnel/sync-dev。
   help          显示帮助。
@@ -45,7 +46,7 @@ Usage:
   down dev 先执行 ./scripts/dev.sh stop comfyui，再执行 ./scripts/dev.sh stop api。
   restart dev 先执行 ./scripts/run.sh down dev，再执行 ./scripts/run.sh up dev。
   check dev 执行 ./scripts/dev.sh doctor。
-  versions/models/logs/remote 只转发到对应原子入口，不重复实现业务逻辑。
+  versions/envs/models/logs/remote 只转发到对应原子入口，不重复实现业务逻辑。
 
 常用示例:
   ./scripts/run.sh init dev
@@ -56,6 +57,7 @@ Usage:
   ./scripts/run.sh versions fetch main
   ./scripts/run.sh versions list
   ./scripts/run.sh versions use ComfyUI-main-a1b2c3d
+  ./scripts/run.sh envs current
   ./scripts/run.sh models link
   ./scripts/run.sh models download runwayml/stable-diffusion-v1-5 --filename v1-5-pruned.safetensors
   ./scripts/run.sh remote deploy
@@ -133,13 +135,32 @@ Exit Codes:
   其他非 0 由 ComfyUI shell CLI 透传
 EOF
       ;;
+    envs)
+      cat <<'EOF'
+Usage:
+  ./scripts/run.sh envs <list|current|prepare> [args...]
+
+职责:
+  日常排障 ComfyUI 版本环境，底层转发到 ./scripts/dev.sh comfy envs。
+
+常用示例:
+  ./scripts/run.sh envs list
+  ./scripts/run.sh envs current
+  ./scripts/run.sh envs prepare ComfyUI-v0.36.0-ee71d5c
+
+Exit Codes:
+  0  成功
+  2  参数错误
+  其他非 0 由 ComfyUI shell CLI 透传
+EOF
+      ;;
     switch)
       cat <<'EOF'
 Usage:
   ./scripts/run.sh switch <ref>
 
 职责:
-  日常切换 ComfyUI 版本。按顺序执行 fetch ref、use resolved version、models link 和 current 展示。
+  日常切换 ComfyUI 版本。按顺序执行 fetch ref、prepare env、use resolved version、models link 和 current 展示。
 
 常用示例:
   ./scripts/run.sh switch v0.36.0
@@ -249,6 +270,11 @@ run_versions() {
   "$ROOT_DIR/scripts/dev.sh" comfy versions "$@"
 }
 
+run_envs() {
+  [[ $# -gt 0 ]] || die "usage: ./scripts/run.sh envs <list|current|prepare> [args...]" 2
+  "$ROOT_DIR/scripts/dev.sh" comfy envs "$@"
+}
+
 run_switch() {
   local ref="$1"
   local fetch_output
@@ -327,6 +353,11 @@ case "$cmd" in
     shift
     if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
     run_versions "$@"
+    ;;
+  envs)
+    shift
+    if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
+    run_envs "$@"
     ;;
   switch)
     shift

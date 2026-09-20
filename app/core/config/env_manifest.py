@@ -34,6 +34,7 @@ APPLICATION_ENV_KEYS = frozenset(
         "COMFY__HOST",
         "COMFY__PORT",
         "COMFY__PYTHON",
+        "COMFY__PYPI_INDEX_URL",
         "COMFY__EXTRA_ARGS",
         "COMFY__HF_ENDPOINT",
         "COMFY__HF_TOKEN",

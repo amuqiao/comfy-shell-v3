@@ -131,6 +131,7 @@ class ComfySettings(ConfigSection):
     host: str = "127.0.0.1"
     port: int = Field(default=8188, ge=1, le=65535)
     python: str = "python"
+    pypi_index_url: str = ""
     extra_args: str = ""
     hf_endpoint: str = "https://huggingface.co"
     hf_token: SecretStr = Field(default=SecretStr(""), repr=False)
