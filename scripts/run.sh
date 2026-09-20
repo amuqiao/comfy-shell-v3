@@ -253,11 +253,19 @@ run_switch() {
   local ref="$1"
   local fetch_output
   local version_name
+  local output_file
   [[ -n "$ref" ]] || die "usage: ./scripts/run.sh switch <ref>" 2
 
   section "Switch ComfyUI"
   event "RUN" "version" "fetch $ref"
-  fetch_output="$("$ROOT_DIR/scripts/dev.sh" comfy versions fetch "$ref")"
+  output_file="$(mktemp)"
+  if ! "$ROOT_DIR/scripts/dev.sh" comfy versions fetch "$ref" >"$output_file"; then
+    cat "$output_file" >&2
+    rm -f "$output_file"
+    die "failed to fetch ComfyUI ref: $ref" 4
+  fi
+  fetch_output="$(cat "$output_file")"
+  rm -f "$output_file"
   printf "%s\n" "$fetch_output"
   version_name="$(printf "%s" "$fetch_output" | uv run python -c 'import json,sys; print(json.load(sys.stdin)["name"])')"
 

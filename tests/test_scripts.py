@@ -902,6 +902,23 @@ def test_run_switch_fetches_uses_links_and_shows_current(tmp_path):
     ]
 
 
+def test_run_switch_prints_fetch_failure_output(tmp_path):
+    root, _log_file = fake_run_root(tmp_path, dev_fail_args="comfy versions fetch missing-ref", dev_fail_exit=17)
+
+    result = subprocess.run(
+        ["./scripts/run.sh", "switch", "missing-ref"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 4
+    assert "dev comfy versions fetch missing-ref" in result.stderr
+    assert "failed to fetch ComfyUI ref: missing-ref" in result.stderr
+
+
 def test_run_models_dispatches_to_comfy_cli(tmp_path):
     root, log_file = fake_run_root(tmp_path)
 
