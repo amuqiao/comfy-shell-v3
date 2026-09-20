@@ -70,6 +70,8 @@ def fake_comfy_env(monkeypatch):
             "python": str(python),
             "requirements": str(version_dir / "requirements.txt"),
             "pypi_index_url": settings.comfy.pypi_index_url,
+            "torch_index_url": settings.comfy.torch_index_url,
+            "torch_packages": settings.comfy.torch_packages,
             "updated_at": "2026-09-20T00:00:00Z",
         }
 

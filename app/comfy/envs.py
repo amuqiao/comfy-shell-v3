@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -63,9 +64,23 @@ def prepare_env_unlocked(
     if not python.exists():
         run_tool(["uv", "venv", "--python", settings.comfy.python, str(env_dir)])
 
+    constraints = env_dir / ".comfy-shell-torch-constraints.txt"
+    torch_packages = shlex.split(settings.comfy.torch_packages)
+    if torch_packages:
+        torch_command = ["uv", "pip", "install", "--python", str(python)]
+        if settings.comfy.torch_index_url:
+            torch_command.extend(["--index-url", settings.comfy.torch_index_url])
+        torch_command.extend(torch_packages)
+        run_tool(torch_command)
+        constraints.write_text("\n".join(torch_packages) + "\n", encoding="utf-8")
+    else:
+        constraints.unlink(missing_ok=True)
+
     install_command = ["uv", "pip", "install", "--python", str(python)]
     if settings.comfy.pypi_index_url:
         install_command.extend(["--index-url", settings.comfy.pypi_index_url])
+    if constraints.exists():
+        install_command.extend(["--constraint", str(constraints)])
     install_command.extend(["-r", str(requirements)])
     run_tool(install_command)
 
@@ -75,6 +90,8 @@ def prepare_env_unlocked(
         "python": str(python),
         "requirements": str(requirements),
         "pypi_index_url": settings.comfy.pypi_index_url,
+        "torch_index_url": settings.comfy.torch_index_url,
+        "torch_packages": settings.comfy.torch_packages,
         "updated_at": utc_now(),
     }
     (env_dir / ENV_META).write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8")
