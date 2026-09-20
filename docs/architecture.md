@@ -158,6 +158,7 @@ catalog/workflow-files/     # 原始 workflow JSON，作为资产保存，不自
 - `target` 只写相对 `models/` 的子目录，例如 `loras`、`vae`、`text_encoders`。
 - `filename` 是落到目标目录下的文件名或相对文件路径。
 - CLI 只执行 catalog 声明，不通过临时参数覆盖模型来源。
+- 下载命令返回 JSON 执行回执，包含 `id`、`status`、`source`、来源定位字段、`target_path`、最终 `path`、`size_hint` 和 `sha256`；第一版不维护下载历史或审计数据库。
 
 ## 配置模型
 

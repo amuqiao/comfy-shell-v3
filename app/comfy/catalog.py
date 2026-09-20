@@ -429,7 +429,7 @@ def download_model_entry(settings: AppSettings, model_id: str, entry: ModelEntry
                 details={"resource": "model", "id": model_id, "reason": "destination_not_file", "path": str(destination)},
             )
         verify_sha256(destination, entry.sha256)
-        return {"id": model_id, "status": "exists", "path": str(destination), "target": entry.target}
+        return model_download_result(settings, model_id, entry, destination, "exists")
     if entry.source == "url":
         if entry.url is None:
             raise AppError("REQUEST_INVALID", details={"resource": "model", "id": model_id, "reason": "url_required"})
@@ -443,7 +443,31 @@ def download_model_entry(settings: AppSettings, model_id: str, entry: ModelEntry
     else:
         raise AppError("REQUEST_INVALID", details={"resource": "model", "id": model_id, "reason": "unsupported_source"})
     verify_sha256(destination, entry.sha256)
-    return {"id": model_id, "status": "downloaded", "path": str(destination), "target": entry.target}
+    return model_download_result(settings, model_id, entry, destination, "downloaded")
+
+
+def model_download_result(settings: AppSettings, model_id: str, entry: ModelEntry, destination: Path, status: str) -> dict[str, Any]:
+    if entry.filename is None:
+        raise AppError("REQUEST_INVALID", details={"resource": "model", "id": model_id, "reason": "filename_required"})
+    result: dict[str, Any] = {
+        "id": model_id,
+        "status": status,
+        "source": entry.source,
+        "target": entry.target,
+        "filename": entry.filename,
+        "target_path": str(PurePosixPath(entry.target) / entry.filename),
+        "path": str(destination),
+        "size_hint": entry.size_hint,
+        "sha256": entry.sha256,
+    }
+    if entry.source == "url":
+        result["url"] = str(entry.url) if entry.url is not None else None
+    elif entry.source == "huggingface":
+        result["repo_id"] = entry.repo_id
+        result["hf_endpoint"] = settings.comfy.hf_endpoint
+    elif entry.source == "local":
+        result["source_path"] = entry.path
+    return result
 
 
 def download_url(url: str, destination: Path) -> None:

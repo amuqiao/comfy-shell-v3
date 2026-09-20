@@ -200,6 +200,10 @@ models = ["demo_model"]
     target = models_dir / "checkpoints" / "demo_model.safetensors"
     assert result["workflow"] == "demo_workflow"
     assert result["items"][0]["status"] == "downloaded"
+    assert result["items"][0]["source"] == "local"
+    assert result["items"][0]["source_path"] == str(source_model)
+    assert result["items"][0]["filename"] == "demo_model.safetensors"
+    assert result["items"][0]["target_path"] == "checkpoints/demo_model.safetensors"
     assert target.read_text(encoding="utf-8") == "model-data"
 
 
@@ -264,6 +268,10 @@ models = ["demo_model"]
 
     target = models_dir / "checkpoints" / "demo_model.safetensors"
     assert result["status"] == "downloaded"
+    assert result["source"] == "url"
+    assert result["url"] == "https://hf-mirror.com/org/repo/resolve/main/demo_model.safetensors"
+    assert result["filename"] == "demo_model.safetensors"
+    assert result["target_path"] == "checkpoints/demo_model.safetensors"
     assert calls == [("https://hf-mirror.com/org/repo/resolve/main/demo_model.safetensors", target)]
     assert target.read_text(encoding="utf-8") == "url-model"
 
@@ -330,6 +338,11 @@ models = ["demo_model"]
 
     target = models_dir / "checkpoints" / "nested" / "demo_model.safetensors"
     assert result["status"] == "downloaded"
+    assert result["source"] == "huggingface"
+    assert result["repo_id"] == "org/repo"
+    assert result["hf_endpoint"] == "https://huggingface.co"
+    assert result["filename"] == "nested/demo_model.safetensors"
+    assert result["target_path"] == "checkpoints/nested/demo_model.safetensors"
     assert calls == [("https://huggingface.co", "org/repo", "nested/demo_model.safetensors", target)]
     assert target.read_text(encoding="utf-8") == "hf-model"
 
