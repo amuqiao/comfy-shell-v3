@@ -1,0 +1,78 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-fastapi_lite}
+    ports:
+      - "${POSTGRES_HOST_PORT:-25432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${POSTGRES_DB:-fastapi_lite}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_HOST_PORT:-26379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - redis-data:/data
+
+  api:
+    build:
+      context: .
+    profiles:
+      - app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      RUNTIME__APP_ENV: ${RUNTIME__APP_ENV:-local}
+      SERVICE__NAME: ${SERVICE__NAME:-fastapi-lite}
+      SERVICE__TITLE: ${SERVICE__TITLE:-FastAPI Lite}
+      SERVICE__API_PREFIX: ${SERVICE__API_PREFIX:-/v1}
+      SECURITY__SERVICE_API_KEY: ${SECURITY__SERVICE_API_KEY:-<replace-me>}
+      SECURITY__DISABLE_AUTH: ${SECURITY__DISABLE_AUTH:-false}
+      SECURITY__ALLOWED_ORIGINS: ${SECURITY__ALLOWED_ORIGINS:-http://localhost:3000}
+      DATABASE__URL: postgresql+asyncpg://postgres:postgres@postgres:5432/${POSTGRES_DB:-fastapi_lite}
+      DATABASE__SSL: "false"
+      DATABASE__POOL_SIZE: ${DATABASE__POOL_SIZE:-5}
+      DATABASE__MAX_OVERFLOW: ${DATABASE__MAX_OVERFLOW:-10}
+      REDIS__ENABLED: ${REDIS__ENABLED:-false}
+      REDIS__URL: redis://redis:6379/0
+      STORAGE__BACKEND: ${STORAGE__BACKEND:-disabled}
+      STORAGE__LOCAL_PATH: ${STORAGE__LOCAL_PATH:-storage/objects}
+      STORAGE__ENDPOINT: ${STORAGE__ENDPOINT:-}
+      STORAGE__BUCKET: ${STORAGE__BUCKET:-}
+      STORAGE__REGION: ${STORAGE__REGION:-}
+      STORAGE__ACCESS_KEY_ID: ${STORAGE__ACCESS_KEY_ID:-}
+      STORAGE__ACCESS_KEY_SECRET: ${STORAGE__ACCESS_KEY_SECRET:-}
+      HTTP_CLIENT__TIMEOUT_SECONDS: ${HTTP_CLIENT__TIMEOUT_SECONDS:-5}
+      OBSERVABILITY__LOG_LEVEL: ${OBSERVABILITY__LOG_LEVEL:-INFO}
+      OBSERVABILITY__ACCESS_LOG_ENABLED: ${OBSERVABILITY__ACCESS_LOG_ENABLED:-true}
+      OBSERVABILITY__HEALTH_ACCESS_LOG: ${OBSERVABILITY__HEALTH_ACCESS_LOG:-false}
+      API_HOST: 0.0.0.0
+      API_PORT: 8100
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+    ports:
+      - "${API_HOST_PORT:-8100}:8100"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/health', timeout=2).read()"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  postgres-data:
+  redis-data:

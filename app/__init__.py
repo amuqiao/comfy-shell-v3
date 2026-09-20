@@ -1,0 +1,2 @@
+"""FastAPI Lite application package."""
+
