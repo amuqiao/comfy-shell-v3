@@ -57,10 +57,13 @@ def fake_run_root(
     *,
     dev_exit: int = 0,
     deploy_exit: int = 0,
+    remote_exit: int = 0,
     dev_fail_args: str | None = None,
     dev_fail_exit: int = 0,
     deploy_fail_args: str | None = None,
     deploy_fail_exit: int = 0,
+    remote_fail_args: str | None = None,
+    remote_fail_exit: int = 0,
 ) -> tuple[Path, Path]:
     root = tmp_path / "fake-root"
     scripts = root / "scripts"
@@ -96,6 +99,17 @@ exit {deploy_exit}
 """
     )
     deploy.chmod(0o755)
+
+    remote = scripts / "remote.sh"
+    remote.write_text(
+        f"""#!/usr/bin/env sh
+echo "remote $*" >> "{log_file}"
+echo "remote $*"
+{exit_for_args(remote_fail_args, remote_fail_exit)}\
+exit {remote_exit}
+"""
+    )
+    remote.chmod(0o755)
 
     return root, log_file
 
@@ -647,6 +661,22 @@ def test_run_dev_check_checks_host(tmp_path):
     assert log_file.read_text().splitlines() == ["dev doctor"]
 
 
+def test_run_dev_init_initializes_workspace(tmp_path):
+    root, log_file = fake_run_root(tmp_path)
+
+    result = subprocess.run(
+        ["./scripts/run.sh", "init", "dev"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert log_file.read_text().splitlines() == ["dev comfy workspace init"]
+
+
 def test_run_dev_up_starts_api_then_comfyui(tmp_path):
     root, log_file = fake_run_root(tmp_path)
 
@@ -813,17 +843,84 @@ def test_run_dev_check_propagates_doctor_failure(tmp_path):
     assert log_file.read_text().splitlines() == ["dev doctor"]
 
 
+def test_run_logs_dispatches_to_dev_logs(tmp_path):
+    root, log_file = fake_run_root(tmp_path)
+
+    result = subprocess.run(
+        ["./scripts/run.sh", "logs", "comfyui"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert log_file.read_text().splitlines() == ["dev logs comfyui"]
+
+
+def test_run_versions_dispatches_to_comfy_cli(tmp_path):
+    root, log_file = fake_run_root(tmp_path)
+
+    result = subprocess.run(
+        ["./scripts/run.sh", "versions", "fetch", "main"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert log_file.read_text().splitlines() == ["dev comfy versions fetch main"]
+
+
+def test_run_models_dispatches_to_comfy_cli(tmp_path):
+    root, log_file = fake_run_root(tmp_path)
+
+    result = subprocess.run(
+        ["./scripts/run.sh", "models", "link"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert log_file.read_text().splitlines() == ["dev comfy models link"]
+
+
+def test_run_remote_dispatches_to_remote_script(tmp_path):
+    root, log_file = fake_run_root(tmp_path)
+
+    result = subprocess.run(
+        ["./scripts/run.sh", "remote", "logs", "comfyui"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert log_file.read_text().splitlines() == ["remote logs comfyui"]
+
+
 def test_run_help_documents_daily_dev_contract():
     result = run_script("./scripts/run.sh", "help")
 
     assert result.returncode == 0
+    assert "init dev" in result.stdout
     assert "restart dev" in result.stdout
     assert "check dev" in result.stdout
+    assert "versions fetch main" in result.stdout
+    assert "remote deploy" in result.stdout
     assert "dev recipe 表示当前项目在远程开发机上的日常运行全集" in result.stdout
     assert "down all" not in result.stdout
 
 
-@pytest.mark.parametrize("action", ["check", "restart"])
+@pytest.mark.parametrize("action", ["check", "restart", "versions", "models", "remote", "logs"])
 def test_run_action_help_does_not_execute_recipe(tmp_path, action):
     root, log_file = fake_run_root(tmp_path)
 
@@ -841,7 +938,7 @@ def test_run_action_help_does_not_execute_recipe(tmp_path, action):
     assert not log_file.exists()
 
 
-@pytest.mark.parametrize("action", ["up", "restart", "check"])
+@pytest.mark.parametrize("action", ["init", "up", "restart", "check"])
 def test_run_rejects_missing_recipe(tmp_path, action):
     result = subprocess.run(
         ["./scripts/run.sh", action],
@@ -857,8 +954,32 @@ def test_run_rejects_missing_recipe(tmp_path, action):
 
 
 @pytest.mark.parametrize(
+    ("command", "usage"),
+    [
+        ("logs", "usage: ./scripts/run.sh logs <api|comfyui>"),
+        ("versions", "usage: ./scripts/run.sh versions <list|current|fetch|use> [args...]"),
+        ("models", "usage: ./scripts/run.sh models <list|link|download> [args...]"),
+        ("remote", "usage: ./scripts/run.sh remote <deploy|status|logs|shell|tunnel|sync-dev> [args...]"),
+    ],
+)
+def test_run_rejects_missing_subcommand(tmp_path, command, usage):
+    result = subprocess.run(
+        ["./scripts/run.sh", command],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path),
+    )
+
+    assert result.returncode == 2
+    assert usage in result.stderr
+
+
+@pytest.mark.parametrize(
     ("action", "recipe"),
     [
+        ("init", "worker"),
         ("up", "worker"),
         ("down", "all"),
         ("restart", "worker"),

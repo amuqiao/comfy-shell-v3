@@ -229,8 +229,13 @@ case "$cmd" in
     ./scripts/deploy.sh help >/dev/null
     ./scripts/deploy.sh modes >/dev/null
     ./scripts/run.sh help >/dev/null
+    ./scripts/run.sh init --help >/dev/null
     ./scripts/run.sh check --help >/dev/null
     ./scripts/run.sh restart --help >/dev/null
+    ./scripts/run.sh logs --help >/dev/null
+    ./scripts/run.sh versions --help >/dev/null
+    ./scripts/run.sh models --help >/dev/null
+    ./scripts/run.sh remote --help >/dev/null
     ./scripts/remote.sh help >/dev/null
     ./scripts/k8s.sh help >/dev/null
     ./scripts/verify.sh help >/dev/null
