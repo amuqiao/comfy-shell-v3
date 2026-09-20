@@ -187,7 +187,7 @@ EOF
     comfy)
       cat <<'EOF'
 Usage:
-  ./scripts/dev.sh comfy <workspace|runtimes|versions|envs|models|service> <args...>
+  ./scripts/dev.sh comfy <workspace|runtimes|versions|envs|models|catalog|service> <args...>
 
 职责:
   透传到 ComfyUI shell Python CLI。脚本只负责进入项目根目录和 uv 环境。
@@ -198,6 +198,8 @@ Usage:
   ./scripts/dev.sh comfy runtimes stage-zip comfyui-0.36.0 --archive /data/wangqiao/comfy-shell-v3-workspace/staging/ComfyUI-0.36.0.zip --seed-runtime comfyui-0.27.0-known-good
   ./scripts/dev.sh comfy runtimes use comfyui-0.27.0
   ./scripts/dev.sh comfy models link
+  ./scripts/dev.sh comfy catalog validate
+  ./scripts/dev.sh comfy catalog download workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
   ./scripts/dev.sh comfy service status
 EOF
       ;;

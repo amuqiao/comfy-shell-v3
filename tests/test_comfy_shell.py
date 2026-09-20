@@ -7,12 +7,14 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from app.comfy import archives, envs, models, process, runtimes, versions
+from app.comfy import archives, catalog, envs, models, process, runtimes, versions
 from app.comfy.paths import comfy_paths
 from app.comfy.workspace import init_workspace
 from app.core.config import AppSettings
 from app.core.exceptions import AppError
 from app.main import create_app
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
 
 
 def comfy_settings(tmp_path: Path, repo_url: str | None = None) -> AppSettings:
@@ -113,6 +115,406 @@ def test_workspace_init_creates_runtime_layout(tmp_path):
     assert paths.logs.is_dir()
     assert paths.run.is_dir()
     assert json.loads(paths.state_file.read_text(encoding="utf-8")) == {}
+
+
+def test_catalog_validates_example_workflow():
+    catalog_dir = ROOT_DIR / "catalog"
+
+    summary = catalog.catalog_summary(catalog_dir)
+    workflow = catalog.show_workflow("video_wan2_2_14b_animate", catalog_dir)
+    plugin = catalog.show_plugin("comfyui_manager", catalog_dir)
+
+    assert summary == {"models": 6, "workflows": 1, "plugins": 14}
+    assert workflow["name"] == "video_wan2_2_14B_animate"
+    assert workflow["workflow_file"] == "workflow-files/video_wan2_2_14b_animate.json"
+    assert plugin["target"] == "custom_nodes/ComfyUI-Manager"
+    assert [item["id"] for item in workflow["resolved_models"]] == [
+        "lightx2v_i2v_14b_480p_cfg_step_distill_rank64_bf16",
+        "wananimate_relight_lora_fp16",
+        "wan_2_1_vae",
+        "umt5_xxl_fp8_e4m3fn_scaled",
+        "wan2_2_animate_14b_fp8_e4m3fn_scaled_kj",
+        "clip_vision_h",
+    ]
+
+
+def test_catalog_download_workflow_uses_explicit_models_dir(tmp_path):
+    catalog_dir = tmp_path / "catalog"
+    (catalog_dir / "models").mkdir(parents=True)
+    (catalog_dir / "plugins").mkdir()
+    (catalog_dir / "workflows").mkdir()
+    source_model = tmp_path / "source.safetensors"
+    source_model.write_text("model-data", encoding="utf-8")
+    (catalog_dir / "models" / "demo.toml").write_text(
+        f"""
+schema_version = 1
+
+[models.demo_model]
+name = "demo_model"
+summary = "测试模型。"
+kind = "other"
+source = "local"
+path = "{source_model}"
+filename = "demo_model.safetensors"
+target = "checkpoints"
+""",
+        encoding="utf-8",
+    )
+    (catalog_dir / "plugins" / "demo.toml").write_text(
+        """
+schema_version = 1
+
+[plugins.demo_plugin]
+name = "demo_plugin"
+summary = "测试插件。"
+source = "manual"
+install_hint = "manual"
+target = "custom_nodes/demo_plugin"
+scope = "per-runtime"
+status = "planned"
+""",
+        encoding="utf-8",
+    )
+    (catalog_dir / "workflows" / "demo.toml").write_text(
+        """
+schema_version = 1
+
+[workflows.demo_workflow]
+name = "demo_workflow"
+summary = "测试工作流。"
+status = "planned"
+models = ["demo_model"]
+""",
+        encoding="utf-8",
+    )
+    settings = comfy_settings(tmp_path)
+    models_dir = tmp_path / "external-models"
+
+    result = catalog.download_workflow_models(
+        settings,
+        "demo_workflow",
+        models_dir=str(models_dir),
+        catalog_dir=catalog_dir,
+    )
+
+    target = models_dir / "checkpoints" / "demo_model.safetensors"
+    assert result["workflow"] == "demo_workflow"
+    assert result["items"][0]["status"] == "downloaded"
+    assert target.read_text(encoding="utf-8") == "model-data"
+
+
+def test_catalog_download_url_source_uses_direct_url(tmp_path, monkeypatch):
+    catalog_dir = tmp_path / "catalog"
+    (catalog_dir / "models").mkdir(parents=True)
+    (catalog_dir / "plugins").mkdir()
+    (catalog_dir / "workflows").mkdir()
+    (catalog_dir / "models" / "demo.toml").write_text(
+        """
+schema_version = 1
+
+[models.demo_model]
+name = "demo_model"
+summary = "测试 hf-mirror 直链模型。"
+kind = "other"
+source = "url"
+url = "https://hf-mirror.com/org/repo/resolve/main/demo_model.safetensors"
+filename = "demo_model.safetensors"
+target = "checkpoints"
+""",
+        encoding="utf-8",
+    )
+    (catalog_dir / "plugins" / "demo.toml").write_text(
+        """
+schema_version = 1
+
+[plugins.demo_plugin]
+name = "demo_plugin"
+summary = "测试插件。"
+source = "manual"
+install_hint = "manual"
+target = "custom_nodes/demo_plugin"
+scope = "per-runtime"
+status = "planned"
+""",
+        encoding="utf-8",
+    )
+    (catalog_dir / "workflows" / "demo.toml").write_text(
+        """
+schema_version = 1
+
+[workflows.demo_workflow]
+name = "demo_workflow"
+summary = "测试工作流。"
+status = "planned"
+models = ["demo_model"]
+""",
+        encoding="utf-8",
+    )
+    calls: list[tuple[str, Path]] = []
+
+    def fake_download_url(url: str, destination: Path) -> None:
+        calls.append((url, destination))
+        destination.write_text("url-model", encoding="utf-8")
+
+    monkeypatch.setattr(catalog, "download_url", fake_download_url)
+    settings = comfy_settings(tmp_path)
+    models_dir = tmp_path / "external-models"
+
+    result = catalog.download_model_by_id(settings, "demo_model", models_dir=str(models_dir), catalog_dir=catalog_dir)
+
+    target = models_dir / "checkpoints" / "demo_model.safetensors"
+    assert result["status"] == "downloaded"
+    assert calls == [("https://hf-mirror.com/org/repo/resolve/main/demo_model.safetensors", target)]
+    assert target.read_text(encoding="utf-8") == "url-model"
+
+
+def test_catalog_download_huggingface_source_uses_hf_endpoint(tmp_path, monkeypatch):
+    catalog_dir = tmp_path / "catalog"
+    (catalog_dir / "models").mkdir(parents=True)
+    (catalog_dir / "plugins").mkdir()
+    (catalog_dir / "workflows").mkdir()
+    (catalog_dir / "models" / "demo.toml").write_text(
+        """
+schema_version = 1
+
+[models.demo_model]
+name = "demo_model"
+summary = "测试 Hugging Face repo 模型。"
+kind = "other"
+source = "huggingface"
+repo_id = "org/repo"
+filename = "nested/demo_model.safetensors"
+target = "checkpoints"
+""",
+        encoding="utf-8",
+    )
+    (catalog_dir / "plugins" / "demo.toml").write_text(
+        """
+schema_version = 1
+
+[plugins.demo_plugin]
+name = "demo_plugin"
+summary = "测试插件。"
+source = "manual"
+install_hint = "manual"
+target = "custom_nodes/demo_plugin"
+scope = "per-runtime"
+status = "planned"
+""",
+        encoding="utf-8",
+    )
+    (catalog_dir / "workflows" / "demo.toml").write_text(
+        """
+schema_version = 1
+
+[workflows.demo_workflow]
+name = "demo_workflow"
+summary = "测试工作流。"
+status = "planned"
+models = ["demo_model"]
+""",
+        encoding="utf-8",
+    )
+    calls: list[tuple[str, str, str, Path]] = []
+
+    def fake_download_huggingface(settings, entry, destination: Path) -> None:
+        calls.append((settings.comfy.hf_endpoint, entry.repo_id, entry.filename, destination))
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text("hf-model", encoding="utf-8")
+
+    monkeypatch.setattr(catalog, "download_huggingface", fake_download_huggingface)
+    settings = comfy_settings(tmp_path)
+    models_dir = tmp_path / "external-models"
+
+    result = catalog.download_model_by_id(settings, "demo_model", models_dir=str(models_dir), catalog_dir=catalog_dir)
+
+    target = models_dir / "checkpoints" / "nested" / "demo_model.safetensors"
+    assert result["status"] == "downloaded"
+    assert calls == [("https://huggingface.co", "org/repo", "nested/demo_model.safetensors", target)]
+    assert target.read_text(encoding="utf-8") == "hf-model"
+
+
+def test_catalog_huggingface_local_dir_matches_nested_filename():
+    assert catalog.huggingface_local_dir(
+        Path("/workspace/models/checkpoints/demo_model.safetensors"),
+        "demo_model.safetensors",
+    ) == Path("/workspace/models/checkpoints")
+    assert catalog.huggingface_local_dir(
+        Path("/workspace/models/checkpoints/nested/demo_model.safetensors"),
+        "nested/demo_model.safetensors",
+    ) == Path("/workspace/models/checkpoints")
+
+
+def test_catalog_rejects_unknown_top_level_keys(tmp_path):
+    catalog_dir = tmp_path / "catalog"
+    (catalog_dir / "models").mkdir(parents=True)
+    (catalog_dir / "plugins").mkdir()
+    (catalog_dir / "workflows").mkdir()
+    (catalog_dir / "models" / "bad.toml").write_text(
+        """
+schema_version = 1
+unexpected = true
+
+[models.demo_model]
+name = "demo_model"
+summary = "测试模型。"
+kind = "other"
+source = "local"
+path = "/tmp/demo"
+filename = "demo_model.safetensors"
+target = "checkpoints"
+""",
+        encoding="utf-8",
+    )
+    (catalog_dir / "plugins" / "demo.toml").write_text(
+        """
+schema_version = 1
+
+[plugins.demo_plugin]
+name = "demo_plugin"
+summary = "测试插件。"
+source = "manual"
+install_hint = "manual"
+target = "custom_nodes/demo_plugin"
+scope = "per-runtime"
+status = "planned"
+""",
+        encoding="utf-8",
+    )
+    (catalog_dir / "workflows" / "demo.toml").write_text(
+        """
+schema_version = 1
+
+[workflows.demo_workflow]
+name = "demo_workflow"
+summary = "测试工作流。"
+status = "planned"
+models = ["demo_model"]
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(AppError) as exc:
+        catalog.catalog_summary(catalog_dir)
+
+    assert exc.value.code == "REQUEST_INVALID"
+    assert exc.value.details["reason"] == "unknown_top_level_keys"
+    assert exc.value.details["keys"] == ["unexpected"]
+
+
+def test_catalog_rejects_model_filename_path_escape(tmp_path):
+    catalog_dir = tmp_path / "catalog"
+    (catalog_dir / "models").mkdir(parents=True)
+    (catalog_dir / "plugins").mkdir()
+    (catalog_dir / "workflows").mkdir()
+    (catalog_dir / "models" / "bad.toml").write_text(
+        """
+schema_version = 1
+
+[models.demo_model]
+name = "demo_model"
+summary = "测试模型。"
+kind = "other"
+source = "url"
+url = "https://hf-mirror.com/org/repo/resolve/main/demo_model.safetensors"
+filename = "../demo_model.safetensors"
+target = "checkpoints"
+""",
+        encoding="utf-8",
+    )
+    (catalog_dir / "plugins" / "demo.toml").write_text(
+        """
+schema_version = 1
+
+[plugins.demo_plugin]
+name = "demo_plugin"
+summary = "测试插件。"
+source = "manual"
+install_hint = "manual"
+target = "custom_nodes/demo_plugin"
+scope = "per-runtime"
+status = "planned"
+""",
+        encoding="utf-8",
+    )
+    (catalog_dir / "workflows" / "demo.toml").write_text(
+        """
+schema_version = 1
+
+[workflows.demo_workflow]
+name = "demo_workflow"
+summary = "测试工作流。"
+status = "planned"
+models = ["demo_model"]
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(AppError) as exc:
+        catalog.catalog_summary(catalog_dir)
+
+    assert exc.value.code == "REQUEST_INVALID"
+    assert exc.value.details["resource"] == "catalog"
+
+
+def test_catalog_download_rejects_destination_directory(tmp_path):
+    catalog_dir = tmp_path / "catalog"
+    (catalog_dir / "models").mkdir(parents=True)
+    (catalog_dir / "plugins").mkdir()
+    (catalog_dir / "workflows").mkdir()
+    source_model = tmp_path / "source.safetensors"
+    source_model.write_text("model-data", encoding="utf-8")
+    (catalog_dir / "models" / "demo.toml").write_text(
+        f"""
+schema_version = 1
+
+[models.demo_model]
+name = "demo_model"
+summary = "测试模型。"
+kind = "other"
+source = "local"
+path = "{source_model}"
+filename = "demo_model.safetensors"
+target = "checkpoints"
+""",
+        encoding="utf-8",
+    )
+    (catalog_dir / "plugins" / "demo.toml").write_text(
+        """
+schema_version = 1
+
+[plugins.demo_plugin]
+name = "demo_plugin"
+summary = "测试插件。"
+source = "manual"
+install_hint = "manual"
+target = "custom_nodes/demo_plugin"
+scope = "per-runtime"
+status = "planned"
+""",
+        encoding="utf-8",
+    )
+    (catalog_dir / "workflows" / "demo.toml").write_text(
+        """
+schema_version = 1
+
+[workflows.demo_workflow]
+name = "demo_workflow"
+summary = "测试工作流。"
+status = "planned"
+models = ["demo_model"]
+""",
+        encoding="utf-8",
+    )
+    settings = comfy_settings(tmp_path)
+    models_dir = tmp_path / "external-models"
+    (models_dir / "checkpoints" / "demo_model.safetensors").mkdir(parents=True)
+
+    with pytest.raises(AppError) as exc:
+        catalog.download_model_by_id(settings, "demo_model", models_dir=str(models_dir), catalog_dir=catalog_dir)
+
+    assert exc.value.code == "RESOURCE_CONFLICT"
+    assert exc.value.details["reason"] == "destination_not_file"
 
 
 def test_import_use_runtime_links_current_models_and_env(tmp_path, fake_runtime_source, fake_runtime_copy):

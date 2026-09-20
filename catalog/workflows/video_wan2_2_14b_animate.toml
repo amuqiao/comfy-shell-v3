@@ -1,0 +1,20 @@
+schema_version = 1
+
+[workflows.video_wan2_2_14b_animate]
+name = "video_wan2_2_14B_animate"
+summary = "Wan2.2 Animate 14B fp8 工作流信息映射表。"
+status = "planned"
+source_url = "https://docs.comfy.org/tutorials/video/wan/wan2-2-animate"
+workflow_file = "workflow-files/video_wan2_2_14b_animate.json"
+runtime_hint = "comfyui-0.36.0"
+models = [
+  "lightx2v_i2v_14b_480p_cfg_step_distill_rank64_bf16",
+  "wananimate_relight_lora_fp16",
+  "wan_2_1_vae",
+  "umt5_xxl_fp8_e4m3fn_scaled",
+  "wan2_2_animate_14b_fp8_e4m3fn_scaled_kj",
+  "clip_vision_h",
+]
+tags = ["video", "wan2_2", "animate", "14b", "fp8"]
+notes = "标准 workflow JSON 不修改；本表只维护人读说明和脚本引用关系。"
+warning = "插件信息由 catalog/plugins 独立维护，不归属到具体工作流。"

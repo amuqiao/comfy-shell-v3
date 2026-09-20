@@ -117,6 +117,16 @@ exit {remote_exit}
     )
     remote.chmod(0o755)
 
+    catalog = scripts / "catalog.sh"
+    catalog.write_text(
+        f"""#!/usr/bin/env sh
+echo "catalog $*" >> "{log_file}"
+echo "catalog $*"
+exit 0
+"""
+    )
+    catalog.chmod(0o755)
+
     return root, log_file
 
 
@@ -125,6 +135,7 @@ def test_script_help_commands_work():
         "./scripts/dev.sh",
         "./scripts/deploy.sh",
         "./scripts/run.sh",
+        "./scripts/catalog.sh",
         "./scripts/remote.sh",
         "./scripts/k8s.sh",
         "./scripts/verify.sh",
@@ -998,6 +1009,32 @@ def test_run_models_dispatches_to_comfy_cli(tmp_path):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert log_file.read_text().splitlines() == ["dev comfy models link"]
+
+
+def test_run_catalog_dispatches_to_catalog_script(tmp_path):
+    root, log_file = fake_run_root(tmp_path)
+
+    result = subprocess.run(
+        [
+            "./scripts/run.sh",
+            "catalog",
+            "download",
+            "workflow",
+            "video_wan2_2_14b_animate",
+            "--models-dir",
+            "/workspace/models",
+        ],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert log_file.read_text().splitlines() == [
+        "catalog download workflow video_wan2_2_14b_animate --models-dir /workspace/models"
+    ]
 
 
 def test_run_remote_dispatches_to_remote_script(tmp_path):

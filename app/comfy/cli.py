@@ -3,18 +3,19 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
 
-from app.comfy import envs, models, process, runtimes, versions
+from app.comfy import catalog, envs, models, process, runtimes, versions
 from app.comfy.workspace import init_workspace
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 
 
 def print_json(value: Any) -> None:
-    print(json.dumps(value, indent=2, sort_keys=True))
+    print(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -65,6 +66,20 @@ def build_parser() -> argparse.ArgumentParser:
     model_download.add_argument("--filename")
     model_download.add_argument("--target", default="checkpoints")
 
+    catalog_parser = subparsers.add_parser("catalog")
+    catalog_parser.add_argument("--catalog-dir")
+    catalog_subparsers = catalog_parser.add_subparsers(dest="action", required=True)
+    catalog_subparsers.add_parser("validate")
+    catalog_list = catalog_subparsers.add_parser("list")
+    catalog_list.add_argument("kind", choices=["models", "workflows", "plugins"])
+    catalog_show = catalog_subparsers.add_parser("show")
+    catalog_show.add_argument("kind", choices=["model", "workflow", "plugin"])
+    catalog_show.add_argument("id")
+    catalog_download = catalog_subparsers.add_parser("download")
+    catalog_download.add_argument("kind", choices=["model", "workflow"])
+    catalog_download.add_argument("id")
+    catalog_download.add_argument("--models-dir")
+
     service = subparsers.add_parser("service")
     service_subparsers = service.add_subparsers(dest="action", required=True)
     service_subparsers.add_parser("start")
@@ -111,6 +126,21 @@ def run(args: argparse.Namespace) -> Any:
         return {"items": models.list_models(settings)}
     if args.domain == "models" and args.action == "download":
         return models.hf_download(settings, args.repo_id, args.filename, args.target)
+    catalog_dir = Path(args.catalog_dir).expanduser().resolve() if getattr(args, "catalog_dir", None) else None
+    if args.domain == "catalog" and args.action == "validate":
+        return catalog.catalog_summary(catalog_dir)
+    if args.domain == "catalog" and args.action == "list":
+        return {"items": catalog.list_entries(args.kind, catalog_dir)}
+    if args.domain == "catalog" and args.action == "show" and args.kind == "model":
+        return catalog.show_model(args.id, catalog_dir)
+    if args.domain == "catalog" and args.action == "show" and args.kind == "plugin":
+        return catalog.show_plugin(args.id, catalog_dir)
+    if args.domain == "catalog" and args.action == "show" and args.kind == "workflow":
+        return catalog.show_workflow(args.id, catalog_dir)
+    if args.domain == "catalog" and args.action == "download" and args.kind == "model":
+        return catalog.download_model_by_id(settings, args.id, models_dir=args.models_dir, catalog_dir=catalog_dir)
+    if args.domain == "catalog" and args.action == "download" and args.kind == "workflow":
+        return catalog.download_workflow_models(settings, args.id, models_dir=args.models_dir, catalog_dir=catalog_dir)
     if args.domain == "service" and args.action == "start":
         return process.start(settings)
     if args.domain == "service" and args.action == "stop":
@@ -132,7 +162,7 @@ def main(argv: list[str] | None = None) -> int:
         print_json({"code": exc.code, "details": exc.details})
         return 1
     except ValidationError as exc:
-        print_json({"code": "REQUEST_INVALID", "details": {"errors": exc.errors()}})
+        print_json({"code": "REQUEST_INVALID", "details": {"errors": exc.errors(include_context=False)}})
         return 2
     if result is not None:
         print_json(result)

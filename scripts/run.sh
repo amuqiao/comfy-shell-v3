@@ -16,7 +16,7 @@ Usage:
 
 不负责:
   不直接管理进程、Docker Compose、K8s、远端资源或跨仓库服务。
-  精确生命周期和排障可使用 ./scripts/dev.sh、./scripts/remote.sh 或 comfyctl。
+  精确生命周期和排障可使用 ./scripts/dev.sh、./scripts/catalog.sh、./scripts/remote.sh 或 comfyctl。
 
 运行环境:
   Requires: Bash.
@@ -39,6 +39,7 @@ Usage:
                 从 ComfyUI zip 和已有 runtime venv 准备一个新 runtime。
   switch <name>  切换到已导入 runtime，并链接共享 models。
   models ...    管理共享 models：list/link/download。
+  catalog ...   管理模型、插件和工作流信息表：validate/list/show/download。
   remote ...    本机侧远程操作：deploy/status/logs/shell/tunnel/sync-dev。
   help          显示帮助。
 
@@ -51,7 +52,7 @@ Usage:
   down dev 先执行 ./scripts/dev.sh stop comfyui，再执行 ./scripts/dev.sh stop api。
   restart dev 先执行 ./scripts/run.sh down dev，再执行 ./scripts/run.sh up dev。
   check dev 执行 ./scripts/dev.sh doctor。
-  runtimes/versions/envs/models/logs/remote 只转发到对应原子入口，不重复实现业务逻辑。
+  runtimes/versions/envs/models/catalog/logs/remote 只转发到对应原子入口，不重复实现业务逻辑。
 
 常用示例:
   ./scripts/run.sh init dev
@@ -69,6 +70,9 @@ Usage:
   ./scripts/run.sh envs current
   ./scripts/run.sh models link
   ./scripts/run.sh models download runwayml/stable-diffusion-v1-5 --filename v1-5-pruned.safetensors
+  ./scripts/run.sh catalog validate
+  ./scripts/run.sh catalog show workflow video_wan2_2_14b_animate
+  ./scripts/run.sh catalog download workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
   ./scripts/run.sh remote deploy
   ./scripts/run.sh remote tunnel
   ./scripts/run.sh down dev
@@ -252,6 +256,27 @@ Exit Codes:
   其他非 0 由 ComfyUI shell CLI 透传
 EOF
       ;;
+    catalog)
+      cat <<'EOF'
+Usage:
+  ./scripts/run.sh catalog <validate|list|show|download> [args...]
+
+职责:
+  日常管理 catalog 信息表，底层转发到 ./scripts/catalog.sh。
+
+常用示例:
+  ./scripts/run.sh catalog validate
+  ./scripts/run.sh catalog list workflows
+  ./scripts/run.sh catalog show workflow video_wan2_2_14b_animate
+  ./scripts/run.sh catalog download model wan2_2_animate_14b_fp8_e4m3fn_scaled_kj --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
+  ./scripts/run.sh catalog download workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
+
+Exit Codes:
+  0  成功
+  2  参数错误
+  其他非 0 由 ComfyUI shell CLI 透传
+EOF
+      ;;
     remote)
       cat <<'EOF'
 Usage:
@@ -369,6 +394,11 @@ run_models() {
   "$ROOT_DIR/scripts/dev.sh" comfy models "$@"
 }
 
+run_catalog() {
+  [[ $# -gt 0 ]] || die "usage: ./scripts/run.sh catalog <validate|list|show|download> [args...]" 2
+  "$ROOT_DIR/scripts/catalog.sh" "$@"
+}
+
 run_remote() {
   [[ $# -gt 0 ]] || die "usage: ./scripts/run.sh remote <deploy|status|logs|shell|tunnel|sync-dev> [args...]" 2
   "$ROOT_DIR/scripts/remote.sh" "$@"
@@ -448,6 +478,11 @@ case "$cmd" in
     shift
     if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
     run_models "$@"
+    ;;
+  catalog)
+    shift
+    if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
+    run_catalog "$@"
     ;;
   remote)
     shift

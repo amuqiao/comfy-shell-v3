@@ -1,0 +1,144 @@
+schema_version = 1
+
+[plugins.comfyui_segment_anything_2]
+name = "ComfyUI-segment-anything-2"
+summary = "SAM2 图像和视频分割节点。"
+source = "git"
+repo = "https://github.com/kijai/ComfyUI-segment-anything-2.git"
+branch = "main"
+target = "custom_nodes/ComfyUI-segment-anything-2"
+scope = "per-runtime"
+status = "planned"
+notes = "插件跟随 runtime，不共享 custom_nodes。"
+
+[plugins.comfyui_gguf]
+name = "ComfyUI-GGUF"
+summary = "GGUF 模型加载节点，用于降低部分模型的显存占用。"
+source = "git"
+repo = "https://github.com/city96/ComfyUI-GGUF.git"
+branch = "main"
+target = "custom_nodes/ComfyUI-GGUF"
+scope = "per-runtime"
+status = "planned"
+
+[plugins.comfyui_wan_video_wrapper]
+name = "ComfyUI-WanVideoWrapper"
+summary = "WanVideo 系列工作流常用封装节点。"
+source = "git"
+repo = "https://github.com/kijai/ComfyUI-WanVideoWrapper.git"
+branch = "main"
+target = "custom_nodes/ComfyUI-WanVideoWrapper"
+scope = "per-runtime"
+status = "planned"
+
+[plugins.comfyui_controlnet_aux]
+name = "comfyui_controlnet_aux"
+summary = "ControlNet 辅助预处理器节点。"
+source = "git"
+repo = "https://github.com/Fannovel16/comfyui_controlnet_aux.git"
+branch = "main"
+target = "custom_nodes/comfyui_controlnet_aux"
+scope = "per-runtime"
+status = "planned"
+
+[plugins.comfyui_kjnodes]
+name = "ComfyUI-KJNodes"
+summary = "Kijai 维护的通用 ComfyUI 节点集合。"
+source = "git"
+repo = "https://github.com/kijai/ComfyUI-KJNodes.git"
+branch = "main"
+target = "custom_nodes/ComfyUI-KJNodes"
+scope = "per-runtime"
+status = "planned"
+
+[plugins.comfyui_ipadapter_plus]
+name = "ComfyUI_IPAdapter_plus"
+summary = "IPAdapter 节点集合。"
+source = "git"
+repo = "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git"
+branch = "main"
+target = "custom_nodes/ComfyUI_IPAdapter_plus"
+scope = "per-runtime"
+status = "planned"
+
+[plugins.comfyui_workspace_manager]
+name = "comfyui-workspace-manager"
+summary = "ComfyUI workflow 和模型管理扩展。"
+source = "git"
+repo = "https://github.com/11cafe/comfyui-workspace-manager.git"
+branch = "main"
+target = "custom_nodes/comfyui-workspace-manager"
+scope = "per-runtime"
+status = "planned"
+warning = "该插件上游说明中提到已被 ComfyUI 新版内置 workspace 能力部分替代，安装前需要确认是否仍必要。"
+
+[plugins.comfyui_impact_pack]
+name = "ComfyUI-Impact-Pack"
+summary = "Impact Pack 图像增强、Detailer、Detector 等节点集合。"
+source = "git"
+repo = "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git"
+branch = "Main"
+target = "custom_nodes/ComfyUI-Impact-Pack"
+scope = "per-runtime"
+status = "planned"
+
+[plugins.comfyui_manager]
+name = "ComfyUI-Manager"
+summary = "ComfyUI custom nodes 管理扩展。"
+source = "git"
+repo = "https://github.com/ltdrdata/ComfyUI-Manager.git"
+branch = "main"
+target = "custom_nodes/ComfyUI-Manager"
+scope = "per-runtime"
+status = "planned"
+
+[plugins.comfyui_rmbg]
+name = "ComfyUI-RMBG"
+summary = "背景移除和分割相关节点。"
+source = "git"
+repo = "https://github.com/1038lab/ComfyUI-RMBG.git"
+branch = "main"
+target = "custom_nodes/ComfyUI-RMBG"
+scope = "per-runtime"
+status = "planned"
+notes = "用户原始清单中写作 ComfyUT-RMBG，这里按常见上游名称维护为 ComfyUI-RMBG。"
+
+[plugins.comfyui_video_helper_suite]
+name = "ComfyUI-VideoHelperSuite"
+summary = "视频加载、合成、检查和批处理常用节点。"
+source = "git"
+repo = "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git"
+branch = "main"
+target = "custom_nodes/ComfyUI-VideoHelperSuite"
+scope = "per-runtime"
+status = "planned"
+
+[plugins.comfyui_ultimate_sd_upscale]
+name = "ComfyUI_UltimateSDUpscale"
+summary = "Ultimate SD Upscale 节点。"
+source = "git"
+repo = "https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git"
+branch = "main"
+target = "custom_nodes/ComfyUI_UltimateSDUpscale"
+scope = "per-runtime"
+status = "planned"
+
+[plugins.comfyui_custom_nodes_alekpet]
+name = "ComfyUI_Custom_Nodes_AlekPet"
+summary = "AlekPet 维护的 ComfyUI 自定义节点集合。"
+source = "git"
+repo = "https://github.com/AlekPet/ComfyUI_Custom_Nodes_AlekPet.git"
+branch = "master"
+target = "custom_nodes/ComfyUI_Custom_Nodes_AlekPet"
+scope = "per-runtime"
+status = "planned"
+
+[plugins.comfyui_ltxvideo]
+name = "ComfyUI-LTXVideo"
+summary = "LTXVideo 相关 ComfyUI 节点。"
+source = "git"
+repo = "https://github.com/Lightricks/ComfyUI-LTXVideo.git"
+branch = "master"
+target = "custom_nodes/ComfyUI-LTXVideo"
+scope = "per-runtime"
+status = "planned"

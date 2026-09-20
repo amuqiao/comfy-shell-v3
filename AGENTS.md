@@ -59,6 +59,18 @@
 - 同一时刻只允许一个 ComfyUI runtime 作为 current；不要同时启动多个 8188 ComfyUI 服务。
 - 不要手工改 `current`、`current-env`、`current/models` 软链接；使用 `./scripts/run.sh switch <runtime-name>`。
 - 不要为不同 ComfyUI runtime 复制多份 models；模型统一维护在 `/data/wangqiao/comfy-shell-v3-workspace/models`。
+- Catalog 信息表独立于 workspace 运行状态：
+  - 模型信息维护在 `catalog/models/*.toml`。
+  - 工作流信息维护在 `catalog/workflows/*.toml`。
+  - 插件信息维护在 `catalog/plugins/*.toml`。
+  - 原始 workflow JSON 放在 `catalog/workflow-files/`，不作为配置真源，不要自动改写。
+- 工作流信息只维护说明、原始 JSON 位置、runtime hint 和模型 ID；插件信息独立维护，不归属到具体工作流。
+- Catalog 下载原子入口是 `./scripts/catalog.sh download ...`；日常入口使用 `./scripts/run.sh catalog ...` 编排。
+- Catalog 下载模型时可以显式传 `--models-dir`；不传时使用当前配置的 workspace `models/`。
+- 模型下载来源只能由 `catalog/models/*.toml` 决定，不要在临时脚本参数里另起一套来源规则。
+  - `source = "url"` 用于 `hf-mirror.com/.../resolve/...` 这类直链或普通 HTTP 直链，必须配置 `url`、`filename`、`target`。
+  - `source = "huggingface"` 用于 HF repo 语义下载，必须配置 `repo_id`、`filename`、`target`，endpoint/token 由 `.env` 的 `COMFY__HF_ENDPOINT` / `COMFY__HF_TOKEN` 提供。
+  - `source = "local"` 用于复制已有本地/远端文件，必须配置 `path`、`filename`、`target`。
 - 不要在远端开发机器上直接编辑项目源码；常规路径是本机修改、验证、提交、推送，远端 `git pull --ff-only`。
 - 不要在排障时直接运行完整 `requirements.txt` 或升级 Torch/CUDA，除非用户明确要求。优先复用已验证 runtime 的 `.venv`，只在目标 runtime 的独立 `.venv` 内做最小依赖修复。
 - 不要修改 `comfyui-0.27.0-known-good` runtime 的源码或 `.venv`，它是回滚和 seed 环境。

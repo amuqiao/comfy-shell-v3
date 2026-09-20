@@ -106,6 +106,7 @@ app/
     versions.py       # 低层归档工具，不是日常安装入口
     envs.py           # 低层环境排障工具，不是日常安装入口
     models.py         # shared models 和 current/models 软链接
+    catalog.py        # 模型、插件、工作流信息表校验和模型下载
     process.py        # ComfyUI start/stop/status/logs
     state.py          # workspace/state.json
     paths.py          # workspace 路径计算
@@ -118,6 +119,7 @@ app/
 ```text
 scripts/dev.sh       # 精确控制：doctor/start/stop/status/logs/test
 scripts/run.sh       # 日常 recipe：up/status/down/restart/check dev
+scripts/catalog.sh   # catalog 校验、查看和模型下载原子入口
 scripts/remote.sh    # 本机侧 SSH/tunnel/deploy/sync-dev
 scripts/verify.sh    # lint/test/config/script checks
 ```
@@ -127,6 +129,35 @@ scripts/verify.sh    # lint/test/config/script checks
 - Python 业务能力放在 `app/comfy/`，脚本只编排。
 - API route 只做 HTTP 投影，不直接写 Git、软链接或进程逻辑。
 - 共享 models、版本目录、PID、日志、状态都属于 workspace，不属于项目源码。
+- `catalog/` 属于项目源码，维护人读和脚本可读的信息表；真实模型文件仍属于 workspace `models/`。
+
+## Catalog 真源
+
+Catalog 是“要装什么、从哪里下、放到哪里”的声明式真源，不是临时下载脚本参数集合。
+
+```text
+catalog/models/*.toml       # 模型信息真源：下载来源、文件名、目标 models 子目录
+catalog/workflows/*.toml    # 工作流信息真源：人读说明、原始 JSON 位置、依赖模型 ID
+catalog/plugins/*.toml      # 插件信息真源：插件仓库、目标目录、安装状态
+catalog/workflow-files/     # 原始 workflow JSON，作为资产保存，不自动改写
+```
+
+模型下载来源由 `catalog/models/*.toml` 的 `source` 字段决定：
+
+| source | 用途 | 必填字段 |
+| --- | --- | --- |
+| `url` | `hf-mirror.com/.../resolve/...` 这类直链，或其他普通 HTTP/对象存储直链。 | `url`、`filename`、`target` |
+| `huggingface` | Hugging Face repo 语义下载，需要使用 `.env` 里的 `COMFY__HF_ENDPOINT` / `COMFY__HF_TOKEN`。 | `repo_id`、`filename`、`target` |
+| `local` | 从本机或远端已有文件复制到目标 models 目录。 | `path`、`filename`、`target` |
+
+规则：
+
+- 工作流只引用模型 ID，不内嵌下载链接。
+- 插件独立维护，不归属到某个工作流。
+- `workflow_file` 只写相对 `catalog/` 根目录的路径，例如 `workflow-files/video_wan2_2_14b_animate.json`。
+- `target` 只写相对 `models/` 的子目录，例如 `loras`、`vae`、`text_encoders`。
+- `filename` 是落到目标目录下的文件名或相对文件路径。
+- CLI 只执行 catalog 声明，不通过临时参数覆盖模型来源。
 
 ## 配置模型
 
@@ -276,6 +307,8 @@ COMFY__PORT=8188
 | 切换 runtime | 停止服务后更新 `current` 和 `current-env` 软链接，并链接 `current/models`。 |
 | 共享 models | workspace `models/` 是真源，版本目录只保留软链接。 |
 | 下载模型 | 支持 HF endpoint/token，下载到指定模型子目录。 |
+| Catalog 管理 | 从 `catalog/models`、`catalog/workflows`、`catalog/plugins` 读取信息表；工作流只引用模型 ID，插件独立维护。 |
+| Catalog 下载 | `scripts/catalog.sh` 作为原子入口，`run.sh catalog ...` 作为日常编排入口，可指定 `--models-dir`。 |
 | 服务管理 | 启动、停止、状态、日志，只管理本项目拥有的 ComfyUI 进程。 |
 | API 控制面 | 暴露 runtime、模型、服务状态和启停接口，默认只绑定 `127.0.0.1`。 |
 | 端口映射 | 本机 tunnel 与远端服务端口同名映射，`remote.sh status` 显示 Port Map。 |
