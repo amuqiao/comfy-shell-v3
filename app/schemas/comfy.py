@@ -11,6 +11,16 @@ class ComfyVersionUseRequest(StrictBaseModel):
     name: str
 
 
+class ComfyRuntimeImportRequest(StrictBaseModel):
+    name: str
+    comfy_dir: str
+    venv_dir: str
+
+
+class ComfyRuntimeUseRequest(StrictBaseModel):
+    name: str
+
+
 class ComfyModelDownloadRequest(StrictBaseModel):
     repo_id: str
     filename: str | None = None
@@ -27,4 +37,3 @@ class ComfyListResponse(StrictBaseModel):
 
 class ComfyLogResponse(StrictBaseModel):
     text: str
-

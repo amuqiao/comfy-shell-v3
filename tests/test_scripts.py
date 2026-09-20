@@ -881,11 +881,35 @@ def test_run_versions_dispatches_to_comfy_cli(tmp_path):
     assert log_file.read_text().splitlines() == ["dev comfy versions fetch main"]
 
 
-def test_run_switch_fetches_uses_links_and_shows_current(tmp_path):
+def test_run_runtimes_dispatches_to_comfy_cli(tmp_path):
     root, log_file = fake_run_root(tmp_path)
 
     result = subprocess.run(
-        ["./scripts/run.sh", "switch", "v0.36.0"],
+        ["./scripts/run.sh", "runtimes", "list"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert log_file.read_text().splitlines() == ["dev comfy runtimes list"]
+
+
+def test_run_import_runtime_dispatches_to_comfy_cli(tmp_path):
+    root, log_file = fake_run_root(tmp_path)
+
+    result = subprocess.run(
+        [
+            "./scripts/run.sh",
+            "import-runtime",
+            "comfyui-0.27.0",
+            "--comfy-dir",
+            "/old/ComfyUI",
+            "--venv-dir",
+            "/old/.venv",
+        ],
         cwd=ROOT_DIR,
         text=True,
         capture_output=True,
@@ -895,18 +919,15 @@ def test_run_switch_fetches_uses_links_and_shows_current(tmp_path):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert log_file.read_text().splitlines() == [
-        "dev comfy versions fetch v0.36.0",
-        "dev comfy versions use ComfyUI-v0.36.0-test123",
-        "dev comfy models link",
-        "dev comfy versions current",
+        "dev comfy runtimes import comfyui-0.27.0 --comfy-dir /old/ComfyUI --venv-dir /old/.venv"
     ]
 
 
-def test_run_switch_prints_fetch_failure_output(tmp_path):
-    root, _log_file = fake_run_root(tmp_path, dev_fail_args="comfy versions fetch missing-ref", dev_fail_exit=17)
+def test_run_switch_uses_runtime_links_and_shows_current(tmp_path):
+    root, log_file = fake_run_root(tmp_path)
 
     result = subprocess.run(
-        ["./scripts/run.sh", "switch", "missing-ref"],
+        ["./scripts/run.sh", "switch", "comfyui-0.27.0"],
         cwd=ROOT_DIR,
         text=True,
         capture_output=True,
@@ -914,9 +935,27 @@ def test_run_switch_prints_fetch_failure_output(tmp_path):
         env=script_env(tmp_path, ROOT_DIR=str(root)),
     )
 
-    assert result.returncode == 4
-    assert "dev comfy versions fetch missing-ref" in result.stderr
-    assert "failed to fetch ComfyUI ref: missing-ref" in result.stderr
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert log_file.read_text().splitlines() == [
+        "dev comfy runtimes use comfyui-0.27.0",
+        "dev comfy models link",
+        "dev comfy runtimes current",
+    ]
+
+
+def test_run_switch_propagates_runtime_use_failure(tmp_path):
+    root, _log_file = fake_run_root(tmp_path, dev_fail_args="comfy runtimes use missing-runtime", dev_fail_exit=17)
+
+    result = subprocess.run(
+        ["./scripts/run.sh", "switch", "missing-runtime"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 17
 
 
 def test_run_models_dispatches_to_comfy_cli(tmp_path):
@@ -973,13 +1012,17 @@ def test_run_help_documents_daily_dev_contract():
     assert "init dev" in result.stdout
     assert "restart dev" in result.stdout
     assert "check dev" in result.stdout
-    assert "versions fetch main" in result.stdout
+    assert "import-runtime comfyui-0.27.0" in result.stdout
+    assert "runtimes list" in result.stdout
     assert "remote deploy" in result.stdout
     assert "dev recipe 表示当前项目在远程开发机上的日常运行全集" in result.stdout
     assert "down all" not in result.stdout
 
 
-@pytest.mark.parametrize("action", ["check", "restart", "versions", "switch", "models", "remote", "logs"])
+@pytest.mark.parametrize(
+    "action",
+    ["check", "restart", "runtimes", "versions", "switch", "import-runtime", "models", "remote", "logs"],
+)
 def test_run_action_help_does_not_execute_recipe(tmp_path, action):
     root, log_file = fake_run_root(tmp_path)
 
@@ -1016,8 +1059,10 @@ def test_run_rejects_missing_recipe(tmp_path, action):
     ("command", "usage"),
     [
         ("logs", "usage: ./scripts/run.sh logs <api|comfyui>"),
+        ("runtimes", "usage: ./scripts/run.sh runtimes <list|current|import|use> [args...]"),
         ("versions", "usage: ./scripts/run.sh versions <list|current|fetch|use> [args...]"),
-        ("switch", "usage: ./scripts/run.sh switch <ref>"),
+        ("switch", "usage: ./scripts/run.sh switch <name>"),
+        ("import-runtime", "usage: ./scripts/run.sh import-runtime <name> --comfy-dir <path> --venv-dir <path>"),
         ("models", "usage: ./scripts/run.sh models <list|link|download> [args...]"),
         ("remote", "usage: ./scripts/run.sh remote <deploy|status|logs|shell|tunnel|sync-dev> [args...]"),
     ],

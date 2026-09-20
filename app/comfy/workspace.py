@@ -8,6 +8,7 @@ def init_workspace(settings: AppSettings) -> ComfyPaths:
     paths = comfy_paths(settings)
     for path in (
         paths.root,
+        paths.runtimes,
         paths.versions,
         paths.envs,
         paths.models,

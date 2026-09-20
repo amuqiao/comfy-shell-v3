@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from app.comfy import archives, envs, models, process, versions
+from app.comfy import archives, envs, models, process, runtimes, versions
 from app.comfy.paths import comfy_paths
 from app.comfy.workspace import init_workspace
 from app.core.config import AppSettings
@@ -78,16 +78,127 @@ def fake_comfy_env(monkeypatch):
     monkeypatch.setattr(envs, "prepare_env_unlocked", prepare_env)
 
 
+@pytest.fixture
+def fake_runtime_source(tmp_path):
+    source = tmp_path / "source"
+    comfy_dir = source / "ComfyUI"
+    venv_dir = source / ".venv"
+    (comfy_dir / "models" / "configs").mkdir(parents=True)
+    (comfy_dir / "main.py").write_text("print('runtime')\n", encoding="utf-8")
+    (comfy_dir / "models" / "configs" / "demo.yaml").write_text("model: runtime\n", encoding="utf-8")
+    python = venv_dir / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.write_text("#!/usr/bin/env python\n", encoding="utf-8")
+    python.chmod(0o755)
+    return comfy_dir, venv_dir
+
+
+@pytest.fixture
+def fake_runtime_copy(monkeypatch):
+    def copy_tree(source: Path, target: Path) -> None:
+        shutil.copytree(source, target)
+
+    monkeypatch.setattr(runtimes, "copy_tree", copy_tree)
+
+
 def test_workspace_init_creates_runtime_layout(tmp_path):
     settings = comfy_settings(tmp_path)
     paths = init_workspace(settings)
 
     assert paths.versions.is_dir()
     assert paths.envs.is_dir()
+    assert paths.runtimes.is_dir()
     assert paths.models.is_dir()
     assert paths.logs.is_dir()
     assert paths.run.is_dir()
     assert json.loads(paths.state_file.read_text(encoding="utf-8")) == {}
+
+
+def test_import_use_runtime_links_current_models_and_env(tmp_path, fake_runtime_source, fake_runtime_copy):
+    settings = comfy_settings(tmp_path)
+    source_comfy_dir, source_venv_dir = fake_runtime_source
+
+    imported = runtimes.import_runtime(settings, "comfyui-0.27.0", str(source_comfy_dir), str(source_venv_dir))
+    current = runtimes.use_runtime(settings, "comfyui-0.27.0")
+    paths = comfy_paths(settings)
+
+    assert imported["name"] == "comfyui-0.27.0"
+    assert current["name"] == "comfyui-0.27.0"
+    assert paths.current.is_symlink()
+    assert paths.current.resolve() == paths.runtimes / "comfyui-0.27.0" / "ComfyUI"
+    assert paths.current_env.is_symlink()
+    assert paths.current_env.resolve() == paths.runtimes / "comfyui-0.27.0" / ".venv"
+    assert (paths.current_env / "bin" / "python").is_file()
+    assert (paths.current / "models").is_symlink()
+    assert (paths.current / "models").resolve() == paths.models.resolve()
+    assert (paths.models / "configs" / "demo.yaml").read_text(encoding="utf-8") == "model: runtime\n"
+    state = json.loads(paths.state_file.read_text(encoding="utf-8"))
+    assert state["current_runtime"] == "comfyui-0.27.0"
+    assert state["current_env_python"].endswith("/runtimes/comfyui-0.27.0/.venv/bin/python")
+
+
+def test_import_runtime_requires_executable_python(tmp_path, fake_runtime_source, fake_runtime_copy):
+    settings = comfy_settings(tmp_path)
+    source_comfy_dir, source_venv_dir = fake_runtime_source
+    python = source_venv_dir / "bin" / "python"
+    python.chmod(0o644)
+
+    with pytest.raises(AppError) as exc:
+        runtimes.import_runtime(settings, "bad-runtime", str(source_comfy_dir), str(source_venv_dir))
+
+    assert exc.value.code == "RESOURCE_CONFLICT"
+    assert exc.value.details["reason"] == "runtime_python_not_executable"
+
+
+def test_import_runtime_cleans_partial_copy_on_failure(tmp_path, fake_runtime_source, monkeypatch):
+    settings = comfy_settings(tmp_path)
+    source_comfy_dir, source_venv_dir = fake_runtime_source
+
+    def failing_copy_tree(source: Path, target: Path) -> None:
+        target.mkdir(parents=True)
+        raise AppError("DEPENDENCY_UNAVAILABLE", details={"dependency": "rsync"})
+
+    monkeypatch.setattr(runtimes, "copy_tree", failing_copy_tree)
+
+    with pytest.raises(AppError):
+        runtimes.import_runtime(settings, "partial-runtime", str(source_comfy_dir), str(source_venv_dir))
+
+    paths = comfy_paths(settings)
+    assert not (paths.runtimes / "partial-runtime").exists()
+
+
+def test_use_runtime_model_conflict_does_not_switch_current(tmp_path, fake_runtime_copy):
+    settings = comfy_settings(tmp_path)
+
+    def make_source(name: str, model_text: str) -> tuple[Path, Path]:
+        source = tmp_path / name
+        comfy_dir = source / "ComfyUI"
+        venv_dir = source / ".venv"
+        (comfy_dir / "models" / "configs").mkdir(parents=True)
+        (comfy_dir / "main.py").write_text("print('runtime')\n", encoding="utf-8")
+        (comfy_dir / "models" / "configs" / "demo.yaml").write_text(model_text, encoding="utf-8")
+        python = venv_dir / "bin" / "python"
+        python.parent.mkdir(parents=True)
+        python.write_text("#!/usr/bin/env python\n", encoding="utf-8")
+        python.chmod(0o755)
+        return comfy_dir, venv_dir
+
+    first_comfy, first_venv = make_source("first", "model: first\n")
+    second_comfy, second_venv = make_source("second", "model: second\n")
+    runtimes.import_runtime(settings, "first", str(first_comfy), str(first_venv))
+    runtimes.import_runtime(settings, "second", str(second_comfy), str(second_venv))
+    runtimes.use_runtime(settings, "first")
+    paths = comfy_paths(settings)
+    first_current = paths.current.resolve()
+    first_env = paths.current_env.resolve()
+
+    with pytest.raises(AppError) as exc:
+        runtimes.use_runtime(settings, "second")
+
+    assert exc.value.code == "RESOURCE_CONFLICT"
+    assert exc.value.details["reason"] == "models_seed_conflict"
+    assert paths.current.resolve() == first_current
+    assert paths.current_env.resolve() == first_env
 
 
 def test_fetch_use_version_links_current_models_and_env(tmp_path, fake_comfy_archive, fake_comfy_env):

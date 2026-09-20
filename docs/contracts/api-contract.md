@@ -56,6 +56,10 @@
 | `comfy_versions_fetch` | `POST /v1/comfy/versions/fetch` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `DEPENDENCY_UNAVAILABLE`, `RESOURCE_CONFLICT` |
 | `comfy_versions_use` | `POST /v1/comfy/versions/use` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `RESOURCE_NOT_FOUND`, `RESOURCE_CONFLICT` |
 | `comfy_versions_current` | `GET /v1/comfy/versions/current` | yes | `200` | `UNAUTHORIZED` |
+| `comfy_runtimes_list` | `GET /v1/comfy/runtimes` | yes | `200` | `UNAUTHORIZED` |
+| `comfy_runtimes_import` | `POST /v1/comfy/runtimes/import` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `DEPENDENCY_UNAVAILABLE`, `RESOURCE_NOT_FOUND`, `RESOURCE_CONFLICT` |
+| `comfy_runtimes_use` | `POST /v1/comfy/runtimes/use` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `RESOURCE_NOT_FOUND`, `RESOURCE_CONFLICT` |
+| `comfy_runtimes_current` | `GET /v1/comfy/runtimes/current` | yes | `200` | `UNAUTHORIZED` |
 | `comfy_models_list` | `GET /v1/comfy/models` | yes | `200` | `UNAUTHORIZED` |
 | `comfy_models_link` | `POST /v1/comfy/models/link` | yes | `200` | `UNAUTHORIZED`, `RESOURCE_NOT_FOUND`, `RESOURCE_CONFLICT` |
 | `comfy_models_download` | `POST /v1/comfy/models/download` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `DEPENDENCY_UNAVAILABLE` |

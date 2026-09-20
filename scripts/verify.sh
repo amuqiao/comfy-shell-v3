@@ -233,8 +233,10 @@ case "$cmd" in
     ./scripts/run.sh check --help >/dev/null
     ./scripts/run.sh restart --help >/dev/null
     ./scripts/run.sh logs --help >/dev/null
+    ./scripts/run.sh runtimes --help >/dev/null
     ./scripts/run.sh versions --help >/dev/null
     ./scripts/run.sh envs --help >/dev/null
+    ./scripts/run.sh import-runtime --help >/dev/null
     ./scripts/run.sh switch --help >/dev/null
     ./scripts/run.sh models --help >/dev/null
     ./scripts/run.sh remote --help >/dev/null

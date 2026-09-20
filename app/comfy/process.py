@@ -10,7 +10,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from app.comfy import envs
+from app.comfy import runtimes
+from app.comfy.lock import WorkspaceLock
 from app.comfy.paths import ComfyPaths, comfy_paths
 from app.core.config import AppSettings
 from app.core.exceptions import AppError
@@ -128,80 +129,82 @@ def status(settings: AppSettings) -> dict[str, Any]:
 
 def start(settings: AppSettings) -> dict[str, Any]:
     paths = comfy_paths(settings)
-    if not paths.current.exists():
-        raise AppError("RESOURCE_NOT_FOUND", details={"resource": "current", "path": str(paths.current)})
-    if is_running(paths):
+    with WorkspaceLock(paths.lock_file):
+        if not paths.current.exists():
+            raise AppError("RESOURCE_NOT_FOUND", details={"resource": "current", "path": str(paths.current)})
+        if is_running(paths):
+            return status(settings)
+        if port_busy(settings.comfy.host, settings.comfy.port):
+            raise AppError(
+                "RESOURCE_CONFLICT",
+                details={"reason": "port_busy", "host": settings.comfy.host, "port": settings.comfy.port},
+            )
+        paths.run.mkdir(parents=True, exist_ok=True)
+        paths.logs.mkdir(parents=True, exist_ok=True)
+        extra_args = settings.comfy.extra_args.split() if settings.comfy.extra_args.strip() else []
+        python = runtimes.current_runtime_python(paths)
+        command = [
+            str(python),
+            "main.py",
+            "--listen",
+            settings.comfy.host,
+            "--port",
+            str(settings.comfy.port),
+            *extra_args,
+        ]
+        with paths.comfyui_log_file.open("ab") as output:
+            process = subprocess.Popen(
+                command,
+                cwd=paths.current.resolve(),
+                stdin=subprocess.DEVNULL,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+                close_fds=True,
+                start_new_session=True,
+            )
+        paths.comfyui_pid_file.write_text(f"{process.pid}\n", encoding="utf-8")
+        write_meta(
+            paths,
+            {
+                "pid": process.pid,
+                "service": "comfyui",
+                "cwd": str(paths.current.resolve()),
+                "workspace": str(paths.root),
+                "url": f"http://{settings.comfy.host}:{settings.comfy.port}",
+                "python": str(python),
+                "command": command,
+            },
+        )
+        time.sleep(1)
+        if not pid_running(process.pid):
+            raise AppError(
+                "DEPENDENCY_UNAVAILABLE",
+                details={"dependency": "comfyui", "log_file": str(paths.comfyui_log_file)},
+            )
         return status(settings)
-    if port_busy(settings.comfy.host, settings.comfy.port):
-        raise AppError(
-            "RESOURCE_CONFLICT",
-            details={"reason": "port_busy", "host": settings.comfy.host, "port": settings.comfy.port},
-        )
-    paths.run.mkdir(parents=True, exist_ok=True)
-    paths.logs.mkdir(parents=True, exist_ok=True)
-    extra_args = settings.comfy.extra_args.split() if settings.comfy.extra_args.strip() else []
-    python = envs.current_env_python(paths)
-    command = [
-        str(python),
-        "main.py",
-        "--listen",
-        settings.comfy.host,
-        "--port",
-        str(settings.comfy.port),
-        *extra_args,
-    ]
-    with paths.comfyui_log_file.open("ab") as output:
-        process = subprocess.Popen(
-            command,
-            cwd=paths.current.resolve(),
-            stdin=subprocess.DEVNULL,
-            stdout=output,
-            stderr=subprocess.STDOUT,
-            close_fds=True,
-            start_new_session=True,
-        )
-    paths.comfyui_pid_file.write_text(f"{process.pid}\n", encoding="utf-8")
-    write_meta(
-        paths,
-        {
-            "pid": process.pid,
-            "service": "comfyui",
-            "cwd": str(paths.current.resolve()),
-            "workspace": str(paths.root),
-            "url": f"http://{settings.comfy.host}:{settings.comfy.port}",
-            "python": str(python),
-            "command": command,
-        },
-    )
-    time.sleep(1)
-    if not pid_running(process.pid):
-        raise AppError(
-            "DEPENDENCY_UNAVAILABLE",
-            details={"dependency": "comfyui", "log_file": str(paths.comfyui_log_file)},
-        )
-    return status(settings)
 
 
 def stop(settings: AppSettings) -> dict[str, Any]:
     paths = comfy_paths(settings)
-    pid = current_pid(paths)
-    if pid is None or not pid_running(pid):
-        paths.comfyui_pid_file.unlink(missing_ok=True)
-        paths.comfyui_meta_file.unlink(missing_ok=True)
-        return status(settings)
-    if not process_owned(paths, pid):
-        paths.comfyui_pid_file.unlink(missing_ok=True)
-        paths.comfyui_meta_file.unlink(missing_ok=True)
-        return status(settings)
-    os.kill(pid, signal.SIGTERM)
-    deadline = time.time() + 10
-    while time.time() < deadline:
-        if not pid_running(pid):
+    with WorkspaceLock(paths.lock_file):
+        pid = current_pid(paths)
+        if pid is None or not pid_running(pid):
             paths.comfyui_pid_file.unlink(missing_ok=True)
             paths.comfyui_meta_file.unlink(missing_ok=True)
             return status(settings)
-        time.sleep(0.2)
-    raise AppError("DEPENDENCY_UNAVAILABLE", details={"dependency": "comfyui", "reason": "stop_timeout", "pid": pid})
+        if not process_owned(paths, pid):
+            paths.comfyui_pid_file.unlink(missing_ok=True)
+            paths.comfyui_meta_file.unlink(missing_ok=True)
+            return status(settings)
+        os.kill(pid, signal.SIGTERM)
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            if not pid_running(pid):
+                paths.comfyui_pid_file.unlink(missing_ok=True)
+                paths.comfyui_meta_file.unlink(missing_ok=True)
+                return status(settings)
+            time.sleep(0.2)
+        raise AppError("DEPENDENCY_UNAVAILABLE", details={"dependency": "comfyui", "reason": "stop_timeout", "pid": pid})
 
 
 def tail_log(settings: AppSettings, lines: int = 80) -> str:

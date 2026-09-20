@@ -22,6 +22,7 @@ def link_models_unlocked(paths: ComfyPaths) -> dict[str, str]:
     if not paths.current.exists():
         raise AppError("RESOURCE_NOT_FOUND", details={"resource": "current", "path": str(paths.current)})
     models_link = paths.current / "models"
+    validate_models_link_target(paths, models_link)
     paths.models.mkdir(parents=True, exist_ok=True)
     expected = paths.models.resolve()
     if models_link.is_symlink():
@@ -44,6 +45,48 @@ def link_models_unlocked(paths: ComfyPaths) -> dict[str, str]:
     tmp.symlink_to(os.path.relpath(paths.models.resolve(), start=models_link.parent.resolve()))
     os.replace(tmp, models_link)
     return {"link": str(models_link), "target": str(expected)}
+
+
+def validate_models_link_target(paths: ComfyPaths, models_link: Path) -> None:
+    paths.models.mkdir(parents=True, exist_ok=True)
+    expected = paths.models.resolve()
+    if models_link.is_symlink():
+        actual = models_link.resolve()
+        if actual != expected:
+            raise AppError(
+                "RESOURCE_CONFLICT",
+                details={"reason": "models_link_wrong_target", "actual": str(actual), "expected": str(expected)},
+            )
+        return
+    if models_link.exists():
+        if not models_link.is_dir():
+            raise AppError(
+                "RESOURCE_CONFLICT",
+                details={"reason": "models_path_is_not_symlink", "path": str(models_link)},
+            )
+        validate_seed_models(models_link, paths.models)
+
+
+def validate_seed_models(source: Path, target: Path) -> None:
+    for source_item in sorted(source.rglob("*"), key=lambda value: len(value.relative_to(source).parts)):
+        relative = source_item.relative_to(source)
+        target_item = target / relative
+        if source_item.is_dir():
+            continue
+        if not source_item.is_file():
+            raise AppError(
+                "RESOURCE_CONFLICT",
+                details={"reason": "models_seed_unsupported_path", "path": str(source_item)},
+            )
+        if target_item.exists() and not (target_item.is_file() and filecmp.cmp(source_item, target_item, shallow=False)):
+            raise AppError(
+                "RESOURCE_CONFLICT",
+                details={
+                    "reason": "models_seed_conflict",
+                    "source": str(source_item),
+                    "target": str(target_item),
+                },
+            )
 
 
 def merge_seed_models(source: Path, target: Path) -> None:

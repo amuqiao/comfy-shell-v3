@@ -30,9 +30,12 @@ Usage:
   restart dev   重启远程开发机常用服务：先 down dev，再 up dev。
   check dev     检查当前代码目录前置条件。
   logs <target> 查看日志，target 为 api 或 comfyui。
-  versions ...  管理 ComfyUI 版本：list/current/fetch/use。
-  envs ...      管理 ComfyUI 版本环境：list/current/prepare。
-  switch <ref>   拉取指定 ComfyUI ref，准备版本环境，设置 current，并链接共享 models。
+  runtimes ...  管理已导入 ComfyUI runtime：list/current/import/use。
+  versions ...  低层版本归档工具：list/current/fetch/use。
+  envs ...      低层环境排障工具：list/current/prepare。
+  import-runtime <name> --comfy-dir <path> --venv-dir <path>
+                复制已有可运行 ComfyUI runtime 到 workspace 规范位置。
+  switch <name>  切换到已导入 runtime，并链接共享 models。
   models ...    管理共享 models：list/link/download。
   remote ...    本机侧远程操作：deploy/status/logs/shell/tunnel/sync-dev。
   help          显示帮助。
@@ -46,14 +49,17 @@ Usage:
   down dev 先执行 ./scripts/dev.sh stop comfyui，再执行 ./scripts/dev.sh stop api。
   restart dev 先执行 ./scripts/run.sh down dev，再执行 ./scripts/run.sh up dev。
   check dev 执行 ./scripts/dev.sh doctor。
-  versions/envs/models/logs/remote 只转发到对应原子入口，不重复实现业务逻辑。
+  runtimes/versions/envs/models/logs/remote 只转发到对应原子入口，不重复实现业务逻辑。
 
 常用示例:
   ./scripts/run.sh init dev
   ./scripts/run.sh up dev
   ./scripts/run.sh status dev
   ./scripts/run.sh logs comfyui
-  ./scripts/run.sh switch v0.36.0
+  ./scripts/run.sh import-runtime comfyui-0.27.0 --comfy-dir /data/wangqiao/comfy-shell/ComfyUI --venv-dir /data/wangqiao/comfy-shell/.venv
+  ./scripts/run.sh switch comfyui-0.27.0
+  ./scripts/run.sh runtimes list
+  ./scripts/run.sh runtimes current
   ./scripts/run.sh versions fetch main
   ./scripts/run.sh versions list
   ./scripts/run.sh versions use ComfyUI-main-a1b2c3d
@@ -121,7 +127,7 @@ Usage:
   ./scripts/run.sh versions <list|current|fetch|use> [args...]
 
 职责:
-  日常管理 ComfyUI 版本，底层转发到 ./scripts/dev.sh comfy versions。
+  低层版本归档工具，底层转发到 ./scripts/dev.sh comfy versions。日常切换优先使用 runtimes。
 
 常用示例:
   ./scripts/run.sh versions fetch main
@@ -135,18 +141,37 @@ Exit Codes:
   其他非 0 由 ComfyUI shell CLI 透传
 EOF
       ;;
+    runtimes)
+      cat <<'EOF'
+Usage:
+  ./scripts/run.sh runtimes <list|current|import|use> [args...]
+
+职责:
+  日常管理已复制到 workspace 的 ComfyUI runtime，底层转发到 ./scripts/dev.sh comfy runtimes。
+
+常用示例:
+  ./scripts/run.sh runtimes list
+  ./scripts/run.sh runtimes current
+  ./scripts/run.sh runtimes use comfyui-0.27.0
+
+Exit Codes:
+  0  成功
+  2  参数错误
+  其他非 0 由 ComfyUI shell CLI 透传
+EOF
+      ;;
     envs)
       cat <<'EOF'
 Usage:
   ./scripts/run.sh envs <list|current|prepare> [args...]
 
 职责:
-  日常排障 ComfyUI 版本环境，底层转发到 ./scripts/dev.sh comfy envs。
+  低层环境排障工具，底层转发到 ./scripts/dev.sh comfy envs。日常启动不依赖自动安装环境。
 
 常用示例:
   ./scripts/run.sh envs list
   ./scripts/run.sh envs current
-  ./scripts/run.sh envs prepare ComfyUI-v0.36.0-ee71d5c
+  ./scripts/run.sh envs prepare ComfyUI-archive-example
 
 Exit Codes:
   0  成功
@@ -157,14 +182,30 @@ EOF
     switch)
       cat <<'EOF'
 Usage:
-  ./scripts/run.sh switch <ref>
+  ./scripts/run.sh switch <name>
 
 职责:
-  日常切换 ComfyUI 版本。按顺序执行 fetch ref、prepare env、use resolved version、models link 和 current 展示。
+  日常切换已导入 ComfyUI runtime。按顺序执行 runtimes use、models link 和 runtimes current。
 
 常用示例:
-  ./scripts/run.sh switch v0.36.0
-  ./scripts/run.sh switch main
+  ./scripts/run.sh switch comfyui-0.27.0
+
+Exit Codes:
+  0  成功
+  2  参数错误
+  其他非 0 由 ComfyUI shell CLI 透传
+EOF
+      ;;
+    import-runtime)
+      cat <<'EOF'
+Usage:
+  ./scripts/run.sh import-runtime <name> --comfy-dir <path> --venv-dir <path>
+
+职责:
+  复制一个已经验证可运行的 ComfyUI 源码目录和 venv 到 workspace/runtimes/<name>/。
+
+常用示例:
+  ./scripts/run.sh import-runtime comfyui-0.27.0 --comfy-dir /data/wangqiao/comfy-shell/ComfyUI --venv-dir /data/wangqiao/comfy-shell/.venv
 
 Exit Codes:
   0  成功
@@ -270,37 +311,32 @@ run_versions() {
   "$ROOT_DIR/scripts/dev.sh" comfy versions "$@"
 }
 
+run_runtimes() {
+  [[ $# -gt 0 ]] || die "usage: ./scripts/run.sh runtimes <list|current|import|use> [args...]" 2
+  "$ROOT_DIR/scripts/dev.sh" comfy runtimes "$@"
+}
+
 run_envs() {
   [[ $# -gt 0 ]] || die "usage: ./scripts/run.sh envs <list|current|prepare> [args...]" 2
   "$ROOT_DIR/scripts/dev.sh" comfy envs "$@"
 }
 
 run_switch() {
-  local ref="$1"
-  local fetch_output
-  local version_name
-  local output_file
-  [[ -n "$ref" ]] || die "usage: ./scripts/run.sh switch <ref>" 2
+  local name="$1"
+  [[ -n "$name" ]] || die "usage: ./scripts/run.sh switch <name>" 2
 
   section "Switch ComfyUI"
-  event "RUN" "version" "fetch $ref"
-  output_file="$(mktemp)"
-  if ! "$ROOT_DIR/scripts/dev.sh" comfy versions fetch "$ref" >"$output_file"; then
-    cat "$output_file" >&2
-    rm -f "$output_file"
-    die "failed to fetch ComfyUI ref: $ref" 4
-  fi
-  fetch_output="$(cat "$output_file")"
-  rm -f "$output_file"
-  printf "%s\n" "$fetch_output"
-  version_name="$(printf "%s" "$fetch_output" | uv run python -c 'import json,sys; print(json.load(sys.stdin)["name"])')"
-
-  event "RUN" "version" "use $version_name"
-  "$ROOT_DIR/scripts/dev.sh" comfy versions use "$version_name"
+  event "RUN" "runtime" "use $name"
+  "$ROOT_DIR/scripts/dev.sh" comfy runtimes use "$name"
   event "RUN" "models" "link"
   "$ROOT_DIR/scripts/dev.sh" comfy models link
-  event "CHECK" "version" "current"
-  "$ROOT_DIR/scripts/dev.sh" comfy versions current
+  event "CHECK" "runtime" "current"
+  "$ROOT_DIR/scripts/dev.sh" comfy runtimes current
+}
+
+run_import_runtime() {
+  [[ $# -gt 0 ]] || die "usage: ./scripts/run.sh import-runtime <name> --comfy-dir <path> --venv-dir <path>" 2
+  "$ROOT_DIR/scripts/dev.sh" comfy runtimes import "$@"
 }
 
 run_models() {
@@ -354,6 +390,11 @@ case "$cmd" in
     if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
     run_versions "$@"
     ;;
+  runtimes)
+    shift
+    if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
+    run_runtimes "$@"
+    ;;
   envs)
     shift
     if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
@@ -362,11 +403,16 @@ case "$cmd" in
   switch)
     shift
     if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
-    ref="${1:-}"
-    [[ -n "$ref" ]] || die "usage: ./scripts/run.sh switch <ref>" 2
+    name="${1:-}"
+    [[ -n "$name" ]] || die "usage: ./scripts/run.sh switch <name>" 2
     shift
-    reject_extra_args "usage: ./scripts/run.sh switch $ref" "$@"
-    run_switch "$ref"
+    reject_extra_args "usage: ./scripts/run.sh switch $name" "$@"
+    run_switch "$name"
+    ;;
+  import-runtime)
+    shift
+    if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
+    run_import_runtime "$@"
     ;;
   models)
     shift

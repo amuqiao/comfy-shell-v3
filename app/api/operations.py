@@ -196,6 +196,48 @@ operation_registry.register(
 )
 operation_registry.register(
     OperationSpec(
+        "comfy_runtimes_list",
+        "GET",
+        "/comfy/runtimes",
+        200,
+        frozenset(),
+        response_schema="SuccessEnvelope[ComfyListResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "comfy_runtimes_import",
+        "POST",
+        "/comfy/runtimes/import",
+        200,
+        frozenset({"DEPENDENCY_UNAVAILABLE", "RESOURCE_NOT_FOUND", "RESOURCE_CONFLICT"}),
+        request_schema="ComfyRuntimeImportRequest",
+        response_schema="SuccessEnvelope[ComfyDictResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "comfy_runtimes_use",
+        "POST",
+        "/comfy/runtimes/use",
+        200,
+        frozenset({"RESOURCE_NOT_FOUND", "RESOURCE_CONFLICT"}),
+        request_schema="ComfyRuntimeUseRequest",
+        response_schema="SuccessEnvelope[ComfyDictResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "comfy_runtimes_current",
+        "GET",
+        "/comfy/runtimes/current",
+        200,
+        frozenset(),
+        response_schema="SuccessEnvelope",
+    )
+)
+operation_registry.register(
+    OperationSpec(
         "comfy_models_list",
         "GET",
         "/comfy/models",

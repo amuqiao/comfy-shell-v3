@@ -9,6 +9,7 @@ from app.core.config import AppSettings
 @dataclass(frozen=True)
 class ComfyPaths:
     root: Path
+    runtimes: Path
     versions: Path
     envs: Path
     models: Path
@@ -16,6 +17,7 @@ class ComfyPaths:
     run: Path
     current: Path
     current_env: Path
+    runtime_registry_file: Path
     state_file: Path
     lock_file: Path
     comfyui_pid_file: Path
@@ -29,6 +31,7 @@ def comfy_paths(settings: AppSettings) -> ComfyPaths:
     run = root / "run"
     return ComfyPaths(
         root=root,
+        runtimes=root / "runtimes",
         versions=root / "versions",
         envs=root / "envs",
         models=root / "models",
@@ -36,6 +39,7 @@ def comfy_paths(settings: AppSettings) -> ComfyPaths:
         run=run,
         current=root / "current",
         current_env=root / "current-env",
+        runtime_registry_file=root / "runtimes.json",
         state_file=root / "state.json",
         lock_file=run / "workspace.lock",
         comfyui_pid_file=run / "comfyui.pid",

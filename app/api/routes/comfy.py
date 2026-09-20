@@ -3,7 +3,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query, Request
 
 from app.api.operations import operation_responses
-from app.comfy import models, process, versions
+from app.comfy import models, process, runtimes, versions
 from app.comfy.workspace import init_workspace
 from app.core.context import get_request_id, get_trace_id
 from app.core.security import Principal, get_current_principal
@@ -12,6 +12,8 @@ from app.schemas.comfy import (
     ComfyListResponse,
     ComfyLogResponse,
     ComfyModelDownloadRequest,
+    ComfyRuntimeImportRequest,
+    ComfyRuntimeUseRequest,
     ComfyVersionFetchRequest,
     ComfyVersionUseRequest,
 )
@@ -103,6 +105,78 @@ def current_version(
 ) -> SuccessEnvelope[dict[str, Any] | None]:
     return success_envelope(
         versions.current_version(settings_from_request(request)),
+        request_id=get_request_id(),
+        trace_id=get_trace_id(),
+    )
+
+
+@router.get(
+    "/comfy/runtimes",
+    operation_id="comfy_runtimes_list",
+    response_model=SuccessEnvelope[ComfyListResponse],
+    responses=operation_responses("comfy_runtimes_list"),
+)
+def list_runtimes(
+    request: Request,
+    _principal: Annotated[Principal, Depends(get_current_principal)],
+) -> SuccessEnvelope[ComfyListResponse]:
+    return success_envelope(
+        ComfyListResponse(items=runtimes.list_runtimes(settings_from_request(request))),
+        request_id=get_request_id(),
+        trace_id=get_trace_id(),
+    )
+
+
+@router.post(
+    "/comfy/runtimes/import",
+    operation_id="comfy_runtimes_import",
+    response_model=SuccessEnvelope[ComfyDictResponse],
+    responses=operation_responses("comfy_runtimes_import"),
+)
+def import_runtime(
+    request: Request,
+    data: ComfyRuntimeImportRequest,
+    _principal: Annotated[Principal, Depends(get_current_principal)],
+) -> SuccessEnvelope[ComfyDictResponse]:
+    return success_envelope(
+        ComfyDictResponse(
+            data=runtimes.import_runtime(settings_from_request(request), data.name, data.comfy_dir, data.venv_dir)
+        ),
+        request_id=get_request_id(),
+        trace_id=get_trace_id(),
+    )
+
+
+@router.post(
+    "/comfy/runtimes/use",
+    operation_id="comfy_runtimes_use",
+    response_model=SuccessEnvelope[ComfyDictResponse],
+    responses=operation_responses("comfy_runtimes_use"),
+)
+def use_runtime(
+    request: Request,
+    data: ComfyRuntimeUseRequest,
+    _principal: Annotated[Principal, Depends(get_current_principal)],
+) -> SuccessEnvelope[ComfyDictResponse]:
+    return success_envelope(
+        ComfyDictResponse(data=runtimes.use_runtime(settings_from_request(request), data.name)),
+        request_id=get_request_id(),
+        trace_id=get_trace_id(),
+    )
+
+
+@router.get(
+    "/comfy/runtimes/current",
+    operation_id="comfy_runtimes_current",
+    response_model=SuccessEnvelope[dict[str, Any] | None],
+    responses=operation_responses("comfy_runtimes_current"),
+)
+def current_runtime(
+    request: Request,
+    _principal: Annotated[Principal, Depends(get_current_principal)],
+) -> SuccessEnvelope[dict[str, Any] | None]:
+    return success_envelope(
+        runtimes.current_runtime(settings_from_request(request)),
         request_id=get_request_id(),
         trace_id=get_trace_id(),
     )
@@ -229,4 +303,3 @@ def service_logs(
         request_id=get_request_id(),
         trace_id=get_trace_id(),
     )
-

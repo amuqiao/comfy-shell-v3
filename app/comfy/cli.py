@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from app.comfy import envs, models, process, versions
+from app.comfy import envs, models, process, runtimes, versions
 from app.comfy.workspace import init_workspace
 from app.core.config import get_settings
 from app.core.exceptions import AppError
@@ -40,6 +40,17 @@ def build_parser() -> argparse.ArgumentParser:
     env_prepare.add_argument("name")
     env_subparsers.add_parser("list")
     env_subparsers.add_parser("current")
+
+    runtime = subparsers.add_parser("runtimes")
+    runtime_subparsers = runtime.add_subparsers(dest="action", required=True)
+    runtime_import = runtime_subparsers.add_parser("import")
+    runtime_import.add_argument("name")
+    runtime_import.add_argument("--comfy-dir", required=True)
+    runtime_import.add_argument("--venv-dir", required=True)
+    runtime_use = runtime_subparsers.add_parser("use")
+    runtime_use.add_argument("name")
+    runtime_subparsers.add_parser("list")
+    runtime_subparsers.add_parser("current")
 
     model = subparsers.add_parser("models")
     model_subparsers = model.add_subparsers(dest="action", required=True)
@@ -80,6 +91,14 @@ def run(args: argparse.Namespace) -> Any:
         return {"items": envs.list_envs(settings)}
     if args.domain == "envs" and args.action == "current":
         return envs.current_env(settings)
+    if args.domain == "runtimes" and args.action == "import":
+        return runtimes.import_runtime(settings, args.name, args.comfy_dir, args.venv_dir)
+    if args.domain == "runtimes" and args.action == "use":
+        return runtimes.use_runtime(settings, args.name)
+    if args.domain == "runtimes" and args.action == "list":
+        return {"items": runtimes.list_runtimes(settings)}
+    if args.domain == "runtimes" and args.action == "current":
+        return runtimes.current_runtime(settings)
     if args.domain == "models" and args.action == "link":
         return models.link_models(settings)
     if args.domain == "models" and args.action == "list":

@@ -27,7 +27,7 @@ macOS 本机
 Linux 远程 GPU 机器
   -> git pull comfy-shell-v3
   -> 运行 FastAPI/CLI/scripts
-  -> 管理 ComfyUI versions/current/models/process/logs
+  -> 管理 ComfyUI runtimes/current/models/process/logs
 
 ComfyUI
   -> 仍然负责原生工作流 UI 和推理
@@ -42,7 +42,7 @@ code dir
 
 workspace dir
   = ComfyUI 运行资产目录
-  = versions/current/models/logs/run/state 的地方
+  = runtimes/current/models/logs/run/state 的地方
 ```
 
 源码可以重 clone；workspace 不能随便删，因为里面有模型、版本目录和运行状态。
@@ -62,7 +62,7 @@ workspace dir
 FastAPI template foundation
   -> config / logging / health / error boundary / scripts / docs
 Comfy shell domain
-  -> versions / models / process / state / remote workflow
+  -> runtimes / models / process / state / remote workflow
 Optional web panel
   -> 后期再加，只调用 FastAPI API
 ComfyUI native UI
@@ -102,13 +102,14 @@ app/
   api/routes/
     comfy.py          # FastAPI 控制面路由
   comfy/
-    versions.py       # download archive/materialize/use
-    envs.py           # per-version venv 准备与 current-env 软链接
+    runtimes.py       # import/list/use 已验证 ComfyUI runtime
+    versions.py       # 低层归档工具，不是日常安装入口
+    envs.py           # 低层环境排障工具，不是日常安装入口
     models.py         # shared models 和 current/models 软链接
     process.py        # ComfyUI start/stop/status/logs
     state.py          # workspace/state.json
     paths.py          # workspace 路径计算
-    archives.py       # GitHub source archive 下载与解压
+    archives.py       # 低层 GitHub source archive 下载与解压
     hf.py             # Hugging Face 下载
 ```
 
@@ -167,14 +168,14 @@ RemoteSettings      # 新增：仅 local 环境使用，远程主机和远程代
 
 ```text
 /data/wangqiao/comfy-shell-v3-workspace/
-  versions/
-    ComfyUI-main-a1b2c3d/
-    ComfyUI-v0.3.10-deadbee/
-  envs/
-    ComfyUI-main-a1b2c3d/
-    ComfyUI-v0.3.10-deadbee/
-  current -> versions/ComfyUI-v0.3.10-deadbee
-  current-env -> envs/ComfyUI-v0.3.10-deadbee
+  runtimes/
+    comfyui-0.27.0/
+      ComfyUI/
+      .venv/
+      .comfy-shell-runtime.json
+  runtimes.json
+  current -> runtimes/comfyui-0.27.0/ComfyUI
+  current-env -> runtimes/comfyui-0.27.0/.venv
   models/
     checkpoints/
     loras/
@@ -192,14 +193,15 @@ RemoteSettings      # 新增：仅 local 环境使用，远程主机和远程代
 
 关键规则：
 
-- `current` 只指向 `versions/<version-id>`。
-- `current-env` 只指向 `envs/<version-id>`，ComfyUI 启动只能使用 `current-env/bin/python`。
-- `version-id` 必须包含 resolved commit，不能只叫 `main`。
+- `runtimes.json` 是已导入 runtime 的注册表，记录 name、ComfyUI 路径、venv 路径和来源。
+- `current` 只指向已导入 runtime 的 `ComfyUI/`。
+- `current-env` 只指向同一个 runtime 的 `.venv/`，ComfyUI 启动只能使用 `current-env/bin/python`。
+- `versions/` 和 `envs/` 只作为低层归档/排障能力存在，不是日常路径。
 - `models/` 是唯一模型真源。
 - `current/models` 只能是指向 workspace `models/` 的软链接。
-- 版本 archive 自带的 `models/` 模板会在首次使用时合并进 workspace `models/`；同名不同内容直接报冲突。
-- 切换版本、链接 models、启动/停止服务都必须加 workspace lock。
-- 服务运行时拒绝切换版本。
+- 导入 runtime 自带的 `models/` 会在首次使用时合并进 workspace `models/`；同名不同内容直接报冲突。
+- 切换 runtime、链接 models、启动/停止服务都必须加 workspace lock。
+- 服务运行时拒绝切换 runtime。
 
 ## 远程生命周期
 
@@ -237,19 +239,20 @@ Linux 远程
 
 | 能力 | 最小行为 |
 | --- | --- |
-| 初始化 workspace | 创建 `versions/envs/models/logs/run/state.json`。 |
-| 拉取版本 | 从 ComfyUI GitHub source archive 下载指定 ref，解析 archive commit，物化到 `versions/`。 |
-| 切换版本 | 停止服务后准备 `envs/<version-id>`，更新 `current` 和 `current-env` 软链接，并链接 `current/models`。 |
+| 初始化 workspace | 创建 `runtimes/versions/envs/models/logs/run/state.json`。 |
+| 导入 runtime | 复制一个已验证可运行的 ComfyUI 目录和 venv 到 `runtimes/<name>/`，写入 `runtimes.json`。 |
+| 切换 runtime | 停止服务后更新 `current` 和 `current-env` 软链接，并链接 `current/models`。 |
 | 共享 models | workspace `models/` 是真源，版本目录只保留软链接。 |
 | 下载模型 | 支持 HF endpoint/token，下载到指定模型子目录。 |
 | 服务管理 | 启动、停止、状态、日志，只管理本项目拥有的 ComfyUI 进程。 |
-| API 控制面 | 暴露版本、模型、服务状态和启停接口，默认只绑定 `127.0.0.1`。 |
+| API 控制面 | 暴露 runtime、模型、服务状态和启停接口，默认只绑定 `127.0.0.1`。 |
 | 脚本入口 | `run.sh` 负责日常 recipe，`dev.sh` 负责精确生命周期，`remote.sh` 负责 SSH。 |
 
 ## 不做的事情
 
 第一版明确不做：
 
+- 不做 ComfyUI 安装器，不自动解决 Torch、CUDA、driver、custom nodes 兼容问题。
 - 不做 ComfyUI 内部 API 兼容层。
 - 不重做 ComfyUI 原生 UI。
 - 不做数据库。
@@ -299,6 +302,7 @@ Vite UI
 | branch ref 移动 | 版本身份记录 resolved commit。 |
 | PID 陈旧 | 报告 stale，只清理本项目 PID/meta，不 kill 不归属进程。 |
 | 端口被占用 | 启动前失败，不抢占。 |
+| runtime 缺 `main.py` 或 `.venv/bin/python` | 导入或切换直接失败，不猜测路径。 |
 | 远程 tracked file 有本地修改 | deploy 失败，要求本机提交后再部署。 |
 | API 暴露到公网 | 第一版不支持，默认只绑定 `127.0.0.1`。 |
 
@@ -309,7 +313,7 @@ Vite UI
 1. 清理模板：移除或停用 `items`、DB、Alembic、Compose 依赖路径，让项目先回到薄服务。
 2. 配置：在 `app/core/config` 增加 `ComfySettings` 和 `RemoteSettings`，更新 `.env.example` 和配置 drift 检查。
 3. Workspace 核心：实现 `app/comfy/paths.py`、`state.py`、workspace init 和 lock。
-4. 版本与 models：实现 fetch/materialize/use、models link。
+4. Runtime 与 models：实现 import/list/use/current、models link。
 5. 服务管理：实现 ComfyUI start/stop/status/logs，并接入 `dev.sh`。
 6. API 投影：新增 `app/api/routes/comfy.py`，路由只调用 `app/comfy/`。
 7. 远程入口：新增或改造 `scripts/remote.sh`，完成 deploy/status/logs/tunnel。
