@@ -1,0 +1,29 @@
+schema_version = 1
+
+[assets.dwpose_yolox_l]
+name = "DWPose YOLOX-L detector"
+summary = "comfyui_controlnet_aux 的 DWPreprocessor 使用的 YOLOX-L 检测模型。"
+kind = "plugin_ckpt"
+plugin = "comfyui_controlnet_aux"
+source = "huggingface"
+repo_id = "yzd-v/DWPose"
+filename = "yolox_l.onnx"
+target = "custom_nodes/comfyui_controlnet_aux/ckpts/yzd-v/DWPose"
+size_hint = "206.71MB"
+size_bytes = 216746733
+sha256 = "7860ae79de6c89a3c1eb72ae9a2756c0ccfbe04b7791bb5880afabd97855a411"
+notes = "这是插件私有 ckpt，不放入共享 workspace/models。"
+
+[assets.dwpose_ucoco_384_bs5]
+name = "DWPose UCOCO 384 TorchScript batch-size-5"
+summary = "comfyui_controlnet_aux 的 DWPreprocessor 使用的姿态估计模型。"
+kind = "plugin_ckpt"
+plugin = "comfyui_controlnet_aux"
+source = "huggingface"
+repo_id = "hr16/DWPose-TorchScript-BatchSize5"
+filename = "dw-ll_ucoco_384_bs5.torchscript.pt"
+target = "custom_nodes/comfyui_controlnet_aux/ckpts/hr16/DWPose-TorchScript-BatchSize5"
+size_hint = "128.80MB"
+size_bytes = 135059124
+sha256 = "d86a0b2b59fddc0901a7076e9f59c9f8602602133ed72511c693fd11eea23d91"
+notes = "这是插件私有 ckpt，不放入共享 workspace/models。"

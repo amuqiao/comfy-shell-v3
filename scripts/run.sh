@@ -39,7 +39,7 @@ Usage:
                 从 ComfyUI zip 和已有 runtime venv 准备一个新 runtime。
   switch <name>  切换到已导入 runtime，并链接共享 models。
   models ...    管理共享 models：list/link/download。
-  catalog ...   管理模型、插件和工作流信息表：validate/list/show/inspect/probe/missing/metadata/enrich/download/download-bg/install/update/installed。
+  catalog ...   管理模型、插件、插件资产和工作流信息表：validate/list/show/inspect/probe/missing/metadata/enrich/download/download-bg/install/update/installed。
   remote ...    本机侧远程操作：deploy/status/logs/shell/tunnel/sync-dev。
   help          显示帮助。
 
@@ -72,6 +72,7 @@ Usage:
   ./scripts/run.sh models download runwayml/stable-diffusion-v1-5 --filename v1-5-pruned.safetensors
   ./scripts/run.sh catalog validate
   ./scripts/run.sh catalog show workflow video_wan2_2_14b_animate
+  ./scripts/run.sh catalog show asset dwpose_yolox_l
   ./scripts/run.sh catalog inspect workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
   ./scripts/run.sh catalog probe model clip_vision_h
   ./scripts/run.sh catalog missing workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
@@ -278,6 +279,7 @@ Usage:
   ./scripts/run.sh catalog validate
   ./scripts/run.sh catalog list workflows
   ./scripts/run.sh catalog show workflow video_wan2_2_14b_animate
+  ./scripts/run.sh catalog show asset dwpose_yolox_l
   ./scripts/run.sh catalog inspect workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
   ./scripts/run.sh catalog probe model clip_vision_h
   ./scripts/run.sh catalog missing workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models

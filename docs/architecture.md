@@ -198,6 +198,7 @@ RemoteSettings      # 新增：仅 local 环境使用，远程主机和远程代
 - 真实 `.env` 不提交。
 - 环境变量可以覆盖 `.env` 中的同名配置。
 - `COMFY__CUDA_VISIBLE_DEVICES` 是 ComfyUI GPU 绑定真源；空值表示不限制，非空值会作为 `CUDA_VISIBLE_DEVICES` 注入 ComfyUI 子进程。
+- `COMFY__HF_ENDPOINT` 是 ComfyUI 插件运行时访问 Hugging Face 的 endpoint 真源；会作为 `HF_ENDPOINT` 注入 ComfyUI 子进程。
 - `RUNTIME__APP_ENV=dev` 时不允许出现 `REMOTE__*`，因为远程服务不应该知道本机编排参数。
 - 配置错误启动即失败，不做默认路径猜测。
 

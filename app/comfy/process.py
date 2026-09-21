@@ -154,9 +154,16 @@ def start(settings: AppSettings) -> dict[str, Any]:
         ]
         env = os.environ.copy()
         env.pop("CUDA_VISIBLE_DEVICES", None)
+        env.pop("HF_ENDPOINT", None)
+        env.pop("HF_TOKEN", None)
+        env.pop("HUGGING_FACE_HUB_TOKEN", None)
+        env.pop("HUGGINGFACE_HUB_TOKEN", None)
+        env.pop("COMFY__HF_TOKEN", None)
         cuda_visible_devices = settings.comfy.cuda_visible_devices
         if cuda_visible_devices:
             env["CUDA_VISIBLE_DEVICES"] = cuda_visible_devices
+        hf_endpoint = settings.comfy.hf_endpoint
+        env["HF_ENDPOINT"] = hf_endpoint
         with paths.comfyui_log_file.open("ab") as output:
             process = subprocess.Popen(
                 command,
@@ -180,6 +187,7 @@ def start(settings: AppSettings) -> dict[str, Any]:
                 "python": str(python),
                 "command": command,
                 "cuda_visible_devices": cuda_visible_devices,
+                "hf_endpoint": hf_endpoint,
             },
         )
         time.sleep(1)

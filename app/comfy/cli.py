@@ -71,9 +71,9 @@ def build_parser() -> argparse.ArgumentParser:
     catalog_subparsers = catalog_parser.add_subparsers(dest="action", required=True)
     catalog_subparsers.add_parser("validate")
     catalog_list = catalog_subparsers.add_parser("list")
-    catalog_list.add_argument("kind", choices=["models", "workflows", "plugins"])
+    catalog_list.add_argument("kind", choices=["models", "workflows", "plugins", "assets"])
     catalog_show = catalog_subparsers.add_parser("show")
-    catalog_show.add_argument("kind", choices=["model", "workflow", "plugin"])
+    catalog_show.add_argument("kind", choices=["model", "workflow", "plugin", "asset"])
     catalog_show.add_argument("id")
     catalog_inspect = catalog_subparsers.add_parser("inspect")
     catalog_inspect.add_argument("kind", choices=["model", "workflow"])
@@ -165,6 +165,8 @@ def run(args: argparse.Namespace) -> Any:
         return catalog.show_model(args.id, catalog_dir)
     if args.domain == "catalog" and args.action == "show" and args.kind == "plugin":
         return catalog.show_plugin(args.id, catalog_dir)
+    if args.domain == "catalog" and args.action == "show" and args.kind == "asset":
+        return catalog.show_asset(args.id, catalog_dir)
     if args.domain == "catalog" and args.action == "show" and args.kind == "workflow":
         return catalog.show_workflow(args.id, catalog_dir)
     if args.domain == "catalog" and args.action == "inspect" and args.kind == "model":

@@ -22,7 +22,12 @@ from app.main import create_app
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
 
-def comfy_settings(tmp_path: Path, repo_url: str | None = None, cuda_visible_devices: str = "") -> AppSettings:
+def comfy_settings(
+    tmp_path: Path,
+    repo_url: str | None = None,
+    cuda_visible_devices: str = "",
+    hf_endpoint: str = "https://huggingface.co",
+) -> AppSettings:
     return AppSettings(
         runtime={"app_env": "local"},
         security={"service_api_key": "test-service-key", "disable_auth": True},
@@ -35,7 +40,7 @@ def comfy_settings(tmp_path: Path, repo_url: str | None = None, cuda_visible_dev
             "port": 8188,
             "python": "python",
             "cuda_visible_devices": cuda_visible_devices,
-            "hf_endpoint": "https://huggingface.co",
+            "hf_endpoint": hf_endpoint,
         },
     )
 
@@ -243,11 +248,14 @@ def test_catalog_validates_example_workflow():
     summary = catalog.catalog_summary(catalog_dir)
     workflow = catalog.show_workflow("video_wan2_2_14b_animate", catalog_dir)
     plugin = catalog.show_plugin("comfyui_manager", catalog_dir)
+    asset = catalog.show_asset("dwpose_yolox_l", catalog_dir)
 
-    assert summary == {"models": 6, "workflows": 1, "plugins": 14}
+    assert summary == {"models": 7, "workflows": 1, "plugins": 14, "assets": 2}
     assert workflow["name"] == "video_wan2_2_14B_animate"
     assert workflow["workflow_file"] == "workflow-files/video_wan2_2_14b_animate.json"
     assert plugin["target"] == "custom_nodes/ComfyUI-Manager"
+    assert asset["plugin"] == "comfyui_controlnet_aux"
+    assert asset["target"] == "custom_nodes/comfyui_controlnet_aux/ckpts/yzd-v/DWPose"
     assert [item["id"] for item in workflow["resolved_models"]] == [
         "lightx2v_i2v_14b_480p_cfg_step_distill_rank64_bf16",
         "wananimate_relight_lora_fp16",
@@ -255,7 +263,68 @@ def test_catalog_validates_example_workflow():
         "umt5_xxl_fp8_e4m3fn_scaled",
         "wan2_2_animate_14b_fp8_e4m3fn_scaled_kj",
         "clip_vision_h",
+        "sam2_hiera_base_plus",
     ]
+    assert [item["id"] for item in workflow["resolved_assets"]] == [
+        "dwpose_yolox_l",
+        "dwpose_ucoco_384_bs5",
+    ]
+
+
+def test_catalog_rejects_missing_workflow_asset(tmp_path):
+    catalog_dir = tmp_path / "catalog"
+    (catalog_dir / "models").mkdir(parents=True)
+    (catalog_dir / "plugins").mkdir()
+    (catalog_dir / "workflows").mkdir()
+    (catalog_dir / "models" / "demo.toml").write_text(
+        """
+schema_version = 1
+
+[models.demo_model]
+name = "demo_model"
+summary = "测试模型。"
+kind = "other"
+source = "url"
+url = "https://hf-mirror.com/org/repo/resolve/main/demo_model.safetensors"
+filename = "demo_model.safetensors"
+target = "checkpoints"
+""",
+        encoding="utf-8",
+    )
+    (catalog_dir / "plugins" / "demo.toml").write_text(
+        """
+schema_version = 1
+
+[plugins.demo_plugin]
+name = "demo_plugin"
+summary = "测试插件。"
+source = "manual"
+install_hint = "manual"
+target = "custom_nodes/demo_plugin"
+scope = "per-runtime"
+status = "planned"
+""",
+        encoding="utf-8",
+    )
+    (catalog_dir / "workflows" / "demo.toml").write_text(
+        """
+schema_version = 1
+
+[workflows.demo_workflow]
+name = "demo_workflow"
+summary = "测试工作流。"
+status = "planned"
+models = ["demo_model"]
+assets = ["missing_asset"]
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(AppError) as exc:
+        catalog.catalog_summary(catalog_dir)
+
+    assert exc.value.code == "REQUEST_INVALID"
+    assert exc.value.details["missing_assets"] == ["missing_asset"]
 
 
 def test_catalog_download_workflow_uses_explicit_models_dir(tmp_path):
@@ -1720,7 +1789,7 @@ def test_start_comfyui_injects_cuda_visible_devices(
     fake_runtime_copy,
     monkeypatch,
 ):
-    settings = comfy_settings(tmp_path, cuda_visible_devices="1")
+    settings = comfy_settings(tmp_path, cuda_visible_devices="1", hf_endpoint="https://hf-mirror.com")
     comfy_dir, venv_dir = fake_runtime_source
     runtimes.import_runtime(settings, "comfyui-test", str(comfy_dir), str(venv_dir))
     runtimes.use_runtime(settings, "comfyui-test")
@@ -1745,10 +1814,12 @@ def test_start_comfyui_injects_cuda_visible_devices(
 
     assert result["running"] is True
     assert captured["env"]["CUDA_VISIBLE_DEVICES"] == "1"
+    assert captured["env"]["HF_ENDPOINT"] == "https://hf-mirror.com"
     assert captured["cwd"] == paths.current.resolve()
     assert captured["command"][1:6] == ["main.py", "--listen", "127.0.0.1", "--port", "8188"]
     meta = json.loads(paths.comfyui_meta_file.read_text(encoding="utf-8"))
     assert meta["cuda_visible_devices"] == "1"
+    assert meta["hf_endpoint"] == "https://hf-mirror.com"
 
 
 def test_start_comfyui_clears_inherited_cuda_visible_devices(
@@ -1757,7 +1828,7 @@ def test_start_comfyui_clears_inherited_cuda_visible_devices(
     fake_runtime_copy,
     monkeypatch,
 ):
-    settings = comfy_settings(tmp_path)
+    settings = comfy_settings(tmp_path, hf_endpoint="https://hf-mirror.com")
     comfy_dir, venv_dir = fake_runtime_source
     runtimes.import_runtime(settings, "comfyui-test", str(comfy_dir), str(venv_dir))
     runtimes.use_runtime(settings, "comfyui-test")
@@ -1771,6 +1842,7 @@ def test_start_comfyui_clears_inherited_cuda_visible_devices(
             captured["env"] = kwargs["env"]
 
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+    monkeypatch.setenv("HF_ENDPOINT", "https://huggingface.co")
     monkeypatch.setattr(process.subprocess, "Popen", FakePopen)
     monkeypatch.setattr(process, "pid_running", lambda pid: pid == 43211)
     monkeypatch.setattr(process, "process_owned", lambda _paths, pid: pid == 43211)
@@ -1781,8 +1853,52 @@ def test_start_comfyui_clears_inherited_cuda_visible_devices(
 
     assert result["running"] is True
     assert "CUDA_VISIBLE_DEVICES" not in captured["env"]
+    assert captured["env"]["HF_ENDPOINT"] == "https://hf-mirror.com"
     meta = json.loads(paths.comfyui_meta_file.read_text(encoding="utf-8"))
     assert meta["cuda_visible_devices"] == ""
+    assert meta["hf_endpoint"] == "https://hf-mirror.com"
+
+
+def test_start_comfyui_does_not_inherit_hf_tokens(
+    tmp_path,
+    fake_runtime_source,
+    fake_runtime_copy,
+    monkeypatch,
+):
+    settings = comfy_settings(tmp_path, hf_endpoint="https://hf-mirror.com")
+    comfy_dir, venv_dir = fake_runtime_source
+    runtimes.import_runtime(settings, "comfyui-test", str(comfy_dir), str(venv_dir))
+    runtimes.use_runtime(settings, "comfyui-test")
+    paths = comfy_paths(settings)
+    captured = {}
+
+    class FakePopen:
+        pid = 43212
+
+        def __init__(self, command, **kwargs):
+            captured["env"] = kwargs["env"]
+
+    monkeypatch.setenv("HF_TOKEN", "secret-1")
+    monkeypatch.setenv("HUGGING_FACE_HUB_TOKEN", "secret-2")
+    monkeypatch.setenv("HUGGINGFACE_HUB_TOKEN", "secret-3")
+    monkeypatch.setenv("COMFY__HF_TOKEN", "secret-4")
+    monkeypatch.setattr(process.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(process, "pid_running", lambda pid: pid == 43212)
+    monkeypatch.setattr(process, "process_owned", lambda _paths, pid: pid == 43212)
+    monkeypatch.setattr(process, "port_busy", lambda _host, _port: False)
+    monkeypatch.setattr(process.time, "sleep", lambda _seconds: None)
+
+    result = process.start(settings)
+
+    assert result["running"] is True
+    assert captured["env"]["HF_ENDPOINT"] == "https://hf-mirror.com"
+    assert "HF_TOKEN" not in captured["env"]
+    assert "HUGGING_FACE_HUB_TOKEN" not in captured["env"]
+    assert "HUGGINGFACE_HUB_TOKEN" not in captured["env"]
+    assert "COMFY__HF_TOKEN" not in captured["env"]
+    meta = json.loads(paths.comfyui_meta_file.read_text(encoding="utf-8"))
+    assert meta["hf_endpoint"] == "https://hf-mirror.com"
+    assert "hf_token" not in meta
 
 
 def test_comfy_api_workspace_and_status(tmp_path):

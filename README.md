@@ -145,6 +145,7 @@ COMFY__WORKSPACE_DIR=/data/wangqiao/comfy-shell-v3-workspace
 COMFY__HOST=127.0.0.1
 COMFY__PORT=8188
 COMFY__CUDA_VISIBLE_DEVICES=1
+COMFY__HF_ENDPOINT=https://hf-mirror.com
 API_HOST=127.0.0.1
 API_PORT=8700
 REMOTE__HOST=47.94.108.140
@@ -154,6 +155,8 @@ REMOTE__CODE_DIR=/data/wangqiao/comfy-shell-v3
 `REMOTE__*` 只放在本机 `.env`。远端 GPU 机器不应该依赖本机编排配置。
 
 `COMFY__CUDA_VISIBLE_DEVICES` 用来绑定 ComfyUI 可见的物理 GPU。比如 `1` 表示远端 ComfyUI 只看到物理 GPU 1，并在 ComfyUI / PyTorch 内部把它作为 `cuda:0` 使用。
+
+`COMFY__HF_ENDPOINT` 会作为 `HF_ENDPOINT` 注入 ComfyUI 子进程，用来约束 custom node 运行时通过 `huggingface_hub` 下载模型时使用的 Hub 地址。模型管理主路径仍然是 catalog 提前下载到共享 `models/`。
 
 ## 快速开始
 

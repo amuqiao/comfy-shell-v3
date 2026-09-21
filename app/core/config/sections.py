@@ -136,15 +136,27 @@ class ComfySettings(ConfigSection):
     torch_index_url: str = ""
     extra_args: str = ""
     cuda_visible_devices: str = ""
-    hf_endpoint: str = "https://huggingface.co"
+    hf_endpoint: str = "https://hf-mirror.com"
     hf_token: SecretStr = Field(default=SecretStr(""), repr=False)
 
-    @field_validator("workspace_dir", "repo_url", "host", "python", "hf_endpoint")
+    @field_validator("workspace_dir", "repo_url", "host", "python")
     @classmethod
     def validate_non_empty(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("COMFY settings must not be empty")
         return value
+
+    @field_validator("hf_endpoint")
+    @classmethod
+    def validate_hf_endpoint(cls, value: str) -> str:
+        normalized = value.strip().rstrip("/")
+        if not normalized:
+            raise ValueError("COMFY__HF_ENDPOINT must not be empty")
+        if not normalized.startswith(("https://", "http://")):
+            raise ValueError("COMFY__HF_ENDPOINT must be an http(s) URL")
+        if any(char.isspace() for char in normalized):
+            raise ValueError("COMFY__HF_ENDPOINT must not contain whitespace")
+        return normalized
 
     @field_validator("cuda_visible_devices")
     @classmethod

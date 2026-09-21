@@ -14,7 +14,12 @@ models = [
   "umt5_xxl_fp8_e4m3fn_scaled",
   "wan2_2_animate_14b_fp8_e4m3fn_scaled_kj",
   "clip_vision_h",
+  "sam2_hiera_base_plus",
+]
+assets = [
+  "dwpose_yolox_l",
+  "dwpose_ucoco_384_bs5",
 ]
 tags = ["video", "wan2_2", "animate", "14b", "fp8"]
 notes = "标准 workflow JSON 不修改；本表只维护人读说明和脚本引用关系。"
-warning = "插件信息由 catalog/plugins 独立维护，不归属到具体工作流。"
+warning = "插件代码由 catalog/plugins 独立维护；插件运行时额外依赖由 assets 字段引用。"

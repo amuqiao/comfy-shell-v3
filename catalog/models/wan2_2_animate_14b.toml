@@ -77,3 +77,16 @@ size_hint = "1.18GB"
 notes = "下载到 models/clip_vision/。"
 size_bytes = 1264219396
 sha256 = "64a7ef761bfccbadbaa3da77366aac4185a6c58fa5de5f589b42a65bcc21f161"
+
+[models.sam2_hiera_base_plus]
+name = "sam2_hiera_base_plus"
+summary = "ComfyUI-segment-anything-2 节点使用的 SAM2 base plus 分割模型。"
+kind = "other"
+source = "url"
+url = "https://hf-mirror.com/Kijai/sam2-safetensors/resolve/main/sam2_hiera_base_plus.safetensors"
+filename = "sam2_hiera_base_plus.safetensors"
+target = "sam2"
+size_hint = "308.43MB"
+notes = "下载到 models/sam2/，避免 DownloadAndLoadSAM2Model 节点运行时访问 huggingface.co。"
+size_bytes = 323407992
+sha256 = "fa02d9028dcc4859c191f1d3f1ca1f7eefdb85f3b5e746c9ad738f322f3e89e2"

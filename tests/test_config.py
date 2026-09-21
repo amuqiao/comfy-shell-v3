@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.config import AppSettings
+from app.core.config.sections import ComfySettings
 from app.core.config.settings import validate_app_env_key_drift
 from scripts.verify.env_config_check import check_env_file, check_example_alignment
 
@@ -48,6 +49,29 @@ def test_comfy_cuda_visible_devices_rejects_invalid_values():
 
     with pytest.raises(ValidationError, match="COMFY__CUDA_VISIBLE_DEVICES"):
         AppSettings(comfy={"cuda_visible_devices": "1, 2"})
+
+
+def test_comfy_hf_endpoint_accepts_http_url_and_strips_trailing_slash():
+    settings = AppSettings(comfy={"hf_endpoint": "https://hf-mirror.com/"})
+
+    assert settings.comfy.hf_endpoint == "https://hf-mirror.com"
+
+
+def test_comfy_hf_endpoint_defaults_to_mirror():
+    settings = ComfySettings()
+
+    assert settings.hf_endpoint == "https://hf-mirror.com"
+
+
+def test_comfy_hf_endpoint_rejects_invalid_values():
+    with pytest.raises(ValidationError, match="COMFY__HF_ENDPOINT"):
+        AppSettings(comfy={"hf_endpoint": ""})
+
+    with pytest.raises(ValidationError, match="COMFY__HF_ENDPOINT"):
+        AppSettings(comfy={"hf_endpoint": "hf-mirror.com"})
+
+    with pytest.raises(ValidationError, match="COMFY__HF_ENDPOINT"):
+        AppSettings(comfy={"hf_endpoint": "https://hf-mirror.com/path with space"})
 
 
 def test_env_file_rejects_deprecated_and_derived_keys(tmp_path):

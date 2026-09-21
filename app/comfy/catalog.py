@@ -40,6 +40,7 @@ WorkflowStatus = Literal["planned", "testing", "ready", "deprecated"]
 PluginSource = Literal["git", "registry", "manual"]
 PluginScope = Literal["per-runtime", "shared"]
 PluginStatus = Literal["planned", "approved", "installed", "deprecated"]
+AssetKind = Literal["plugin_ckpt", "plugin_model", "plugin_weight", "other"]
 
 
 class StrictCatalogModel(BaseModel):
@@ -123,6 +124,13 @@ class WorkflowEntry(StrictCatalogModel):
             validate_catalog_id(item)
         return value
 
+    @field_validator("assets")
+    @classmethod
+    def validate_asset_references(cls, value: list[str]) -> list[str]:
+        for item in value:
+            validate_catalog_id(item)
+        return value
+
     @field_validator("workflow_file")
     @classmethod
     def validate_workflow_file(cls, value: str | None) -> str | None:
@@ -167,6 +175,70 @@ class PluginEntry(StrictCatalogModel):
         return self
 
 
+class AssetEntry(StrictCatalogModel):
+    name: str
+    summary: str
+    kind: AssetKind
+    plugin: str
+    source: ModelSource
+    target: str
+    filename: str
+    repo_id: str | None = None
+    url: HttpUrl | None = None
+    path: str | None = None
+    sha256: str | None = None
+    size_hint: str | None = None
+    size_bytes: int | None = None
+    license: str | None = None
+    homepage: HttpUrl | None = None
+    tags: list[str] = Field(default_factory=list)
+    notes: str | None = None
+    warning: str | None = None
+
+    @field_validator("plugin")
+    @classmethod
+    def validate_plugin(cls, value: str) -> str:
+        return validate_catalog_id(value)
+
+    @field_validator("target")
+    @classmethod
+    def validate_target(cls, value: str) -> str:
+        target = validate_relative_catalog_path(value, "target")
+        parts = PurePosixPath(target).parts
+        if len(parts) < 2 or parts[0] != "custom_nodes":
+            raise ValueError("target must be under custom_nodes")
+        return target
+
+    @field_validator("filename")
+    @classmethod
+    def validate_filename(cls, value: str) -> str:
+        return validate_relative_catalog_path(value, "filename", allow_trailing_slash=False)
+
+    @field_validator("sha256")
+    @classmethod
+    def validate_sha256(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(r"[0-9a-fA-F]{64}", value):
+            raise ValueError("sha256 must be 64 hex characters")
+        return value.lower() if value is not None else None
+
+    @field_validator("size_bytes")
+    @classmethod
+    def validate_size_bytes(cls, value: int | None) -> int | None:
+        if value is not None and value <= 0:
+            raise ValueError("size_bytes must be greater than 0")
+        return value
+
+    @model_validator(mode="after")
+    def validate_source_fields(self) -> "AssetEntry":
+        if self.source == "huggingface" and not self.repo_id:
+            raise ValueError("huggingface source requires repo_id")
+        if self.source == "url" and self.url is None:
+            raise ValueError("url source requires url")
+        if self.source == "local" and not self.path:
+            raise ValueError("local source requires path")
+        return self
+
+
 class ModelsCatalog(StrictCatalogModel):
     schema_version: int
     models: dict[str, ModelEntry]
@@ -200,10 +272,22 @@ class PluginsCatalog(StrictCatalogModel):
         return self
 
 
+class AssetsCatalog(StrictCatalogModel):
+    schema_version: int
+    assets: dict[str, AssetEntry]
+
+    @model_validator(mode="after")
+    def validate_catalog(self) -> "AssetsCatalog":
+        validate_schema_version(self.schema_version)
+        validate_id_map(self.assets, "assets")
+        return self
+
+
 class CatalogBundle(StrictCatalogModel):
     models: dict[str, ModelEntry]
     workflows: dict[str, WorkflowEntry]
     plugins: dict[str, PluginEntry]
+    assets: dict[str, AssetEntry]
 
 
 def validate_schema_version(value: int) -> None:
@@ -254,9 +338,20 @@ def read_catalog_section(catalog_dir: Path, dirname: str, section: str) -> dict[
     section_dir = catalog_dir / dirname
     if not section_dir.is_dir():
         raise AppError("RESOURCE_NOT_FOUND", details={"resource": "catalog_dir", "path": str(section_dir)})
+    return read_catalog_section_from_dir(section_dir, section, required=True)
+
+
+def read_optional_catalog_section(catalog_dir: Path, dirname: str, section: str) -> dict[str, Any]:
+    section_dir = catalog_dir / dirname
+    if not section_dir.is_dir():
+        return {"schema_version": CATALOG_SCHEMA_VERSION, section: {}}
+    return read_catalog_section_from_dir(section_dir, section, required=False)
+
+
+def read_catalog_section_from_dir(section_dir: Path, section: str, *, required: bool) -> dict[str, Any]:
     merged: dict[str, Any] = {"schema_version": CATALOG_SCHEMA_VERSION, section: {}}
     files = sorted(section_dir.glob("*.toml"))
-    if not files:
+    if required and not files:
         raise AppError("RESOURCE_NOT_FOUND", details={"resource": "catalog_section", "path": str(section_dir), "section": section})
     for path in files:
         raw = read_toml(path)
@@ -302,16 +397,22 @@ def load_plugins_catalog(catalog_dir: Path) -> PluginsCatalog:
     return PluginsCatalog.model_validate(read_catalog_section(catalog_dir, "plugins", "plugins"))
 
 
+def load_assets_catalog(catalog_dir: Path) -> AssetsCatalog:
+    return AssetsCatalog.model_validate(read_optional_catalog_section(catalog_dir, "assets", "assets"))
+
+
 def load_catalog(catalog_dir: Path | None = None) -> CatalogBundle:
     root = (catalog_dir or default_catalog_dir()).resolve()
     try:
         models_catalog = load_models_catalog(root)
         workflows_catalog = load_workflows_catalog(root)
         plugins_catalog = load_plugins_catalog(root)
+        assets_catalog = load_assets_catalog(root)
         bundle = CatalogBundle(
             models=models_catalog.models,
             workflows=workflows_catalog.workflows,
             plugins=plugins_catalog.plugins,
+            assets=assets_catalog.assets,
         )
         validate_cross_references(bundle, root)
         return bundle
@@ -333,10 +434,26 @@ def validate_cross_references(bundle: CatalogBundle, catalog_dir: Path) -> None:
                     "missing_models": missing_models,
                 },
             )
+        missing_assets = [asset_id for asset_id in workflow.assets if asset_id not in bundle.assets]
+        if missing_assets:
+            raise AppError(
+                "REQUEST_INVALID",
+                details={
+                    "resource": "workflow",
+                    "id": workflow_id,
+                    "missing_assets": missing_assets,
+                },
+            )
         if workflow.workflow_file is not None and not (catalog_dir / workflow.workflow_file).is_file():
             raise AppError(
                 "RESOURCE_NOT_FOUND",
                 details={"resource": "workflow_file", "id": workflow_id, "path": workflow.workflow_file},
+            )
+    for asset_id, asset in bundle.assets.items():
+        if asset.plugin not in bundle.plugins:
+            raise AppError(
+                "REQUEST_INVALID",
+                details={"resource": "asset", "id": asset_id, "missing_plugin": asset.plugin},
             )
 
 
@@ -346,6 +463,7 @@ def catalog_summary(catalog_dir: Path | None = None) -> dict[str, int]:
         "models": len(bundle.models),
         "workflows": len(bundle.workflows),
         "plugins": len(bundle.plugins),
+        "assets": len(bundle.assets),
     }
 
 
@@ -360,7 +478,9 @@ def list_entries(kind: str, catalog_dir: Path | None = None) -> list[dict[str, s
         ]
     if kind == "plugins":
         return [{"id": key, "name": value.name, "status": value.status, "scope": value.scope} for key, value in sorted(bundle.plugins.items())]
-    raise AppError("REQUEST_INVALID", details={"field": "kind", "reason": "expected models, workflows, or plugins"})
+    if kind == "assets":
+        return [{"id": key, "name": value.name, "kind": value.kind, "plugin": value.plugin} for key, value in sorted(bundle.assets.items())]
+    raise AppError("REQUEST_INVALID", details={"field": "kind", "reason": "expected models, workflows, plugins, or assets"})
 
 
 def show_model(model_id: str, catalog_dir: Path | None = None) -> dict[str, Any]:
@@ -375,6 +495,13 @@ def show_plugin(plugin_id: str, catalog_dir: Path | None = None) -> dict[str, An
     if plugin_id not in bundle.plugins:
         raise AppError("RESOURCE_NOT_FOUND", details={"resource": "plugin", "id": plugin_id})
     return bundle.plugins[plugin_id].model_dump(mode="json")
+
+
+def show_asset(asset_id: str, catalog_dir: Path | None = None) -> dict[str, Any]:
+    bundle = load_catalog(catalog_dir)
+    if asset_id not in bundle.assets:
+        raise AppError("RESOURCE_NOT_FOUND", details={"resource": "asset", "id": asset_id})
+    return bundle.assets[asset_id].model_dump(mode="json")
 
 
 def list_installed_plugins(settings: AppSettings, catalog_dir: Path | None = None) -> dict[str, Any]:
@@ -453,6 +580,16 @@ def show_workflow(workflow_id: str, catalog_dir: Path | None = None) -> dict[str
         "resolved_models": [
             {"id": model_id, "name": bundle.models[model_id].name, "target": bundle.models[model_id].target, "filename": bundle.models[model_id].filename}
             for model_id in workflow.models
+        ],
+        "resolved_assets": [
+            {
+                "id": asset_id,
+                "name": bundle.assets[asset_id].name,
+                "plugin": bundle.assets[asset_id].plugin,
+                "target": bundle.assets[asset_id].target,
+                "filename": bundle.assets[asset_id].filename,
+            }
+            for asset_id in workflow.assets
         ],
     }
 

@@ -63,17 +63,21 @@
   - `./scripts/dev.sh start comfyui`
 - 同一时刻只允许一个 ComfyUI runtime 作为 current；不要同时启动多个 8188 ComfyUI 服务。
 - ComfyUI 使用哪张 GPU 必须通过 `.env` 的 `COMFY__CUDA_VISIBLE_DEVICES` 声明；不要手工 `export CUDA_VISIBLE_DEVICES` 或绕过 `run.sh` 启动。
+- ComfyUI 插件运行时访问 Hugging Face 的 endpoint 必须通过 `.env` 的 `COMFY__HF_ENDPOINT` 声明；不要手工 `export HF_ENDPOINT` 绕过 `run.sh` 启动。
 - 不要手工改 `current`、`current-env`、`current/models` 软链接；使用 `./scripts/run.sh switch <runtime-name>`。
 - 不要为不同 ComfyUI runtime 复制多份 models；模型统一维护在 `/data/wangqiao/comfy-shell-v3-workspace/models`。
 - Catalog 信息表独立于 workspace 运行状态：
   - 模型信息维护在 `catalog/models/*.toml`。
   - 工作流信息维护在 `catalog/workflows/*.toml`。
   - 插件信息维护在 `catalog/plugins/*.toml`。
+  - 插件额外运行依赖维护在 `catalog/assets/*.toml`，例如 custom node 私有的 ckpt、onnx、torchscript 文件。
   - 原始 workflow JSON 放在 `catalog/workflow-files/`，不作为配置真源，不要自动改写。
 - Catalog 映射关系必须保持单向清晰：
   - `catalog/workflows/*.toml` 的 `models` 字段只引用模型 ID，用来表达“这个工作流需要哪些模型”。
+  - `catalog/workflows/*.toml` 的 `assets` 字段只引用插件额外依赖 ID，用来表达“这个工作流触发哪些插件私有运行文件”。
   - 模型 ID 在 `catalog/models/*.toml` 中定义，模型配置负责决定 `source`、`filename`、`target`、`size_bytes` 和 `sha256`。
   - `target + filename` 决定模型最终落到 workspace `models/` 下的实际路径。
+  - 插件额外依赖 ID 在 `catalog/assets/*.toml` 中定义，`target + filename` 决定它最终落到当前 runtime 的 ComfyUI 根目录下哪个相对路径。
   - 插件信息独立维护在 `catalog/plugins/*.toml`，不归属到具体工作流，也不要内嵌到 workflow 配置。
 - 工作流信息只维护说明、原始 JSON 位置、runtime hint 和模型 ID；不要解析或改写原始 workflow JSON 来反推 catalog。
 - Catalog 下载原子入口是 `./scripts/catalog.sh download ...`；日常入口使用 `./scripts/run.sh catalog ...` 编排。

@@ -20,10 +20,11 @@ Usage:
   日常编排请使用 ./scripts/run.sh catalog ...。
 
 命令:
-  validate                         校验 catalog/models、catalog/workflows、catalog/plugins。
-  list <models|workflows|plugins>  列出 catalog 条目。
-  show <model|workflow|plugin> <id>
-                                   查看模型、工作流或插件信息。
+  validate                         校验 catalog/models、catalog/workflows、catalog/plugins、catalog/assets。
+  list <models|workflows|plugins|assets>
+                                   列出 catalog 条目。
+  show <model|workflow|plugin|asset> <id>
+                                   查看模型、工作流、插件或插件额外依赖信息。
   inspect model <id> [--models-dir PATH]
                                    查看模型在目标 models 目录中的本地状态。
   inspect workflow <id> [--models-dir PATH]
@@ -61,6 +62,7 @@ Usage:
 常用示例:
   ./scripts/catalog.sh validate
   ./scripts/catalog.sh show workflow video_wan2_2_14b_animate
+  ./scripts/catalog.sh show asset dwpose_yolox_l
   ./scripts/catalog.sh inspect workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
   ./scripts/catalog.sh probe model clip_vision_h
   ./scripts/catalog.sh missing workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
