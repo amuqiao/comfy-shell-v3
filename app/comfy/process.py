@@ -152,6 +152,11 @@ def start(settings: AppSettings) -> dict[str, Any]:
             str(settings.comfy.port),
             *extra_args,
         ]
+        env = os.environ.copy()
+        env.pop("CUDA_VISIBLE_DEVICES", None)
+        cuda_visible_devices = settings.comfy.cuda_visible_devices
+        if cuda_visible_devices:
+            env["CUDA_VISIBLE_DEVICES"] = cuda_visible_devices
         with paths.comfyui_log_file.open("ab") as output:
             process = subprocess.Popen(
                 command,
@@ -159,6 +164,7 @@ def start(settings: AppSettings) -> dict[str, Any]:
                 stdin=subprocess.DEVNULL,
                 stdout=output,
                 stderr=subprocess.STDOUT,
+                env=env,
                 close_fds=True,
                 start_new_session=True,
             )
@@ -173,6 +179,7 @@ def start(settings: AppSettings) -> dict[str, Any]:
                 "url": f"http://{settings.comfy.host}:{settings.comfy.port}",
                 "python": str(python),
                 "command": command,
+                "cuda_visible_devices": cuda_visible_devices,
             },
         )
         time.sleep(1)

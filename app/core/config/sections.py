@@ -135,6 +135,7 @@ class ComfySettings(ConfigSection):
     torch_packages: str = ""
     torch_index_url: str = ""
     extra_args: str = ""
+    cuda_visible_devices: str = ""
     hf_endpoint: str = "https://huggingface.co"
     hf_token: SecretStr = Field(default=SecretStr(""), repr=False)
 
@@ -144,6 +145,19 @@ class ComfySettings(ConfigSection):
         if not value.strip():
             raise ValueError("COMFY settings must not be empty")
         return value
+
+    @field_validator("cuda_visible_devices")
+    @classmethod
+    def validate_cuda_visible_devices(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            return ""
+        parts = normalized.split(",")
+        if any(not part or any(char.isspace() for char in part) for part in parts):
+            raise ValueError("COMFY__CUDA_VISIBLE_DEVICES must be a comma-separated CUDA device list")
+        if len(set(parts)) != len(parts):
+            raise ValueError("COMFY__CUDA_VISIBLE_DEVICES must not contain duplicate CUDA devices")
+        return normalized
 
 
 class RemoteSettings(ConfigSection):

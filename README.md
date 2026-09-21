@@ -144,6 +144,7 @@ RUNTIME__APP_ENV=local
 COMFY__WORKSPACE_DIR=/data/wangqiao/comfy-shell-v3-workspace
 COMFY__HOST=127.0.0.1
 COMFY__PORT=8188
+COMFY__CUDA_VISIBLE_DEVICES=1
 API_HOST=127.0.0.1
 API_PORT=8700
 REMOTE__HOST=47.94.108.140
@@ -151,6 +152,8 @@ REMOTE__CODE_DIR=/data/wangqiao/comfy-shell-v3
 ```
 
 `REMOTE__*` 只放在本机 `.env`。远端 GPU 机器不应该依赖本机编排配置。
+
+`COMFY__CUDA_VISIBLE_DEVICES` 用来绑定 ComfyUI 可见的物理 GPU。比如 `1` 表示远端 ComfyUI 只看到物理 GPU 1，并在 ComfyUI / PyTorch 内部把它作为 `cuda:0` 使用。
 
 ## 快速开始
 
@@ -415,6 +418,7 @@ uv run pytest
 ## 运维规则
 
 - 同一个端口只运行一个 ComfyUI runtime。
+- ComfyUI GPU 绑定通过 `COMFY__CUDA_VISIBLE_DEVICES` 声明，不手工 `export CUDA_VISIBLE_DEVICES` 绕过 `run.sh`。
 - 只维护一份共享 workspace `models/`。
 - 模型、工作流和插件信息放在 `catalog/`。
 - 日常操作优先使用 `scripts/run.sh`。

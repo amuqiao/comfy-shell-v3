@@ -62,6 +62,7 @@
   - `./scripts/run.sh switch <runtime-name>`
   - `./scripts/dev.sh start comfyui`
 - 同一时刻只允许一个 ComfyUI runtime 作为 current；不要同时启动多个 8188 ComfyUI 服务。
+- ComfyUI 使用哪张 GPU 必须通过 `.env` 的 `COMFY__CUDA_VISIBLE_DEVICES` 声明；不要手工 `export CUDA_VISIBLE_DEVICES` 或绕过 `run.sh` 启动。
 - 不要手工改 `current`、`current-env`、`current/models` 软链接；使用 `./scripts/run.sh switch <runtime-name>`。
 - 不要为不同 ComfyUI runtime 复制多份 models；模型统一维护在 `/data/wangqiao/comfy-shell-v3-workspace/models`。
 - Catalog 信息表独立于 workspace 运行状态：

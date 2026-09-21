@@ -38,6 +38,7 @@ APPLICATION_ENV_KEYS = frozenset(
         "COMFY__TORCH_PACKAGES",
         "COMFY__TORCH_INDEX_URL",
         "COMFY__EXTRA_ARGS",
+        "COMFY__CUDA_VISIBLE_DEVICES",
         "COMFY__HF_ENDPOINT",
         "COMFY__HF_TOKEN",
         "REMOTE__HOST",

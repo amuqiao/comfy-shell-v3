@@ -22,7 +22,7 @@ from app.main import create_app
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
 
-def comfy_settings(tmp_path: Path, repo_url: str | None = None) -> AppSettings:
+def comfy_settings(tmp_path: Path, repo_url: str | None = None, cuda_visible_devices: str = "") -> AppSettings:
     return AppSettings(
         runtime={"app_env": "local"},
         security={"service_api_key": "test-service-key", "disable_auth": True},
@@ -34,6 +34,7 @@ def comfy_settings(tmp_path: Path, repo_url: str | None = None) -> AppSettings:
             "host": "127.0.0.1",
             "port": 8188,
             "python": "python",
+            "cuda_visible_devices": cuda_visible_devices,
             "hf_endpoint": "https://huggingface.co",
         },
     )
@@ -1711,6 +1712,77 @@ def test_stop_does_not_kill_unowned_pid(tmp_path):
     finally:
         sleeper.terminate()
         sleeper.wait(timeout=5)
+
+
+def test_start_comfyui_injects_cuda_visible_devices(
+    tmp_path,
+    fake_runtime_source,
+    fake_runtime_copy,
+    monkeypatch,
+):
+    settings = comfy_settings(tmp_path, cuda_visible_devices="1")
+    comfy_dir, venv_dir = fake_runtime_source
+    runtimes.import_runtime(settings, "comfyui-test", str(comfy_dir), str(venv_dir))
+    runtimes.use_runtime(settings, "comfyui-test")
+    paths = comfy_paths(settings)
+    captured = {}
+
+    class FakePopen:
+        pid = 43210
+
+        def __init__(self, command, **kwargs):
+            captured["command"] = command
+            captured["env"] = kwargs["env"]
+            captured["cwd"] = kwargs["cwd"]
+
+    monkeypatch.setattr(process.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(process, "pid_running", lambda pid: pid == 43210)
+    monkeypatch.setattr(process, "process_owned", lambda _paths, pid: pid == 43210)
+    monkeypatch.setattr(process, "port_busy", lambda _host, _port: False)
+    monkeypatch.setattr(process.time, "sleep", lambda _seconds: None)
+
+    result = process.start(settings)
+
+    assert result["running"] is True
+    assert captured["env"]["CUDA_VISIBLE_DEVICES"] == "1"
+    assert captured["cwd"] == paths.current.resolve()
+    assert captured["command"][1:6] == ["main.py", "--listen", "127.0.0.1", "--port", "8188"]
+    meta = json.loads(paths.comfyui_meta_file.read_text(encoding="utf-8"))
+    assert meta["cuda_visible_devices"] == "1"
+
+
+def test_start_comfyui_clears_inherited_cuda_visible_devices(
+    tmp_path,
+    fake_runtime_source,
+    fake_runtime_copy,
+    monkeypatch,
+):
+    settings = comfy_settings(tmp_path)
+    comfy_dir, venv_dir = fake_runtime_source
+    runtimes.import_runtime(settings, "comfyui-test", str(comfy_dir), str(venv_dir))
+    runtimes.use_runtime(settings, "comfyui-test")
+    paths = comfy_paths(settings)
+    captured = {}
+
+    class FakePopen:
+        pid = 43211
+
+        def __init__(self, command, **kwargs):
+            captured["env"] = kwargs["env"]
+
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+    monkeypatch.setattr(process.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(process, "pid_running", lambda pid: pid == 43211)
+    monkeypatch.setattr(process, "process_owned", lambda _paths, pid: pid == 43211)
+    monkeypatch.setattr(process, "port_busy", lambda _host, _port: False)
+    monkeypatch.setattr(process.time, "sleep", lambda _seconds: None)
+
+    result = process.start(settings)
+
+    assert result["running"] is True
+    assert "CUDA_VISIBLE_DEVICES" not in captured["env"]
+    meta = json.loads(paths.comfyui_meta_file.read_text(encoding="utf-8"))
+    assert meta["cuda_visible_devices"] == ""
 
 
 def test_comfy_api_workspace_and_status(tmp_path):

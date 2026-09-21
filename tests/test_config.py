@@ -36,6 +36,20 @@ def test_env_example_matches_manifest():
     assert issues == []
 
 
+def test_comfy_cuda_visible_devices_accepts_gpu_index_list():
+    settings = AppSettings(comfy={"cuda_visible_devices": "1,GPU-118f036b-70f4"})
+
+    assert settings.comfy.cuda_visible_devices == "1,GPU-118f036b-70f4"
+
+
+def test_comfy_cuda_visible_devices_rejects_invalid_values():
+    with pytest.raises(ValidationError, match="COMFY__CUDA_VISIBLE_DEVICES"):
+        AppSettings(comfy={"cuda_visible_devices": "1,1"})
+
+    with pytest.raises(ValidationError, match="COMFY__CUDA_VISIBLE_DEVICES"):
+        AppSettings(comfy={"cuda_visible_devices": "1, 2"})
+
+
 def test_env_file_rejects_deprecated_and_derived_keys(tmp_path):
     env_file = tmp_path / ".env"
     env_file.write_text("SERVICE__ENV=local\nDATABASE__SYNC_URL=postgresql://x\n", encoding="utf-8")
