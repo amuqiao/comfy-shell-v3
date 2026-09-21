@@ -1,128 +1,422 @@
-# fastapi-lite
+# comfy-shell-v3
 
-`fastapi-lite` 是一套轻量但不空心的 FastAPI 服务骨架，用来统一后续业务 API、worker-adjacent API 和内部服务的工程范式。
+<p align="center">
+  <strong>一个用于远端 Linux GPU 机器的 ComfyUI 薄壳管理工具</strong>
+</p>
 
-## What Is Included
+<p align="center">
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.13+-3776AB?style=flat-square&logo=python&logoColor=white">
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-shell-009688?style=flat-square&logo=fastapi&logoColor=white">
+  <img alt="ComfyUI" src="https://img.shields.io/badge/ComfyUI-remote_shell-111827?style=flat-square">
+  <img alt="uv" src="https://img.shields.io/badge/uv-managed-6C47FF?style=flat-square">
+  <img alt="Platform" src="https://img.shields.io/badge/macOS_to_Linux-SSH_tunnel-2563EB?style=flat-square">
+  <img alt="Status" src="https://img.shields.io/badge/status-stable_ops-16A34A?style=flat-square">
+</p>
 
-- FastAPI app factory 和 lifespan。
-- section 化配置、`.env.example` manifest 校验和 release invariant。
-- request id / trace id 中间件、access log、CORS、异常处理。
-- success/error envelope、error registry、operation registry。
-- `/health` 和 `/ready`。
-- SQLAlchemy async、Alembic、UnitOfWork、repository。
-- `items` CRUD 示例模块。
-- lifecycle providers：Postgres、Redis fake boundary、object storage、shared HTTP client。
-- `app/tools/` 示例工具模块。
-- `dev.sh`、`deploy.sh`、`run.sh`、`verify.sh`、`tools.sh` 脚本入口。
-- 脚本公共能力：`doctor`、端口扫描、PID/log 管理、Docker Compose 管理、日常 recipe、迁移入口、secret/env-url 工具、registry/env/docs drift gate。
-- Dockerfile、docker-compose.yml 和 `start-api.sh` API 容器入口。
+<p align="center">
+  <a href="#快速开始">快速开始</a>
+  ·
+  <a href="#日常运维">日常运维</a>
+  ·
+  <a href="#runtime-管理">Runtime 管理</a>
+  ·
+  <a href="#catalog-管理">Catalog 管理</a>
+  ·
+  <a href="#远端访问">远端访问</a>
+</p>
 
-## Quick Start
+`comfy-shell-v3` 是一个很薄的 ComfyUI 远端管理壳：本机 macOS 负责开发和维护代码，远端 Linux GPU 机器负责运行 ComfyUI，本机通过 SSH tunnel 在浏览器里打开 ComfyUI Web。
 
-Install dependencies:
+它不替代 ComfyUI，也不是通用的一键安装器。它只负责把一个个人远端 ComfyUI 工作流管稳定：切换已验证 runtime、共享唯一 `models/` 目录、启停服务、维护模型/工作流/插件信息、下载模型，并通过端口映射访问远端 ComfyUI。
+
+## 核心模型
+
+```text
+macOS 本机
+  -> 编辑和维护 comfy-shell-v3
+  -> push 或同步代码到远端 GPU 机器
+  -> 建立 SSH tunnel
+  -> 浏览器打开 http://127.0.0.1:8188
+
+Linux 远端 GPU 机器
+  -> 运行 comfy-shell-v3
+  -> 管理 ComfyUI runtimes、current 软链接、共享 models、日志和进程状态
+
+ComfyUI
+  -> 继续负责原生工作流 UI 和推理
+```
+
+项目刻意把“源码目录”和“运行资产目录”分开：
+
+```text
+code dir
+  当前 Git 仓库
+  存放 scripts、FastAPI app、CLI、catalog 配置和 docs
+
+workspace dir
+  远端运行资产
+  存放 runtimes/current/current-env/models/logs/run/state
+```
+
+`workspace` 是长期运行状态和大文件所在位置，不要把它当成可以随时删除的项目源码。
+
+## 能力范围
+
+| 能力 | 说明 |
+| --- | --- |
+| ComfyUI runtime 管理 | 导入、准备、查看和切换已验证 runtime。 |
+| 共享 models | 所有 runtime 共享同一份 workspace `models/`。 |
+| 服务管理 | 通过 `run.sh` 启动、停止、重启、查看状态和日志。 |
+| Catalog | 用 TOML 维护模型、工作流和插件信息。 |
+| 模型下载 | 支持直链、Hugging Face、镜像地址和本地路径。 |
+| 后台下载 | 支持远端 `nohup` 下载大模型，并查看状态。 |
+| 插件管理 | 把 catalog 中的 custom nodes 安装或更新到当前 runtime。 |
+| 远端访问 | 本机通过 SSH tunnel 打开远端 ComfyUI Web。 |
+
+## 非目标
+
+- 不重做 ComfyUI Web。
+- 不自动解决所有 Torch、CUDA、driver 或 custom node 兼容问题。
+- 不做多用户平台。
+- 不同时管理多个 ComfyUI 服务实例。
+- 不把模型下载历史写入数据库。
+- 不为每个 ComfyUI 版本复制一份 `models/`。
+
+## 目录结构
+
+```text
+app/
+  comfy/              ComfyUI runtime、models、catalog、process、workspace 逻辑
+  api/                FastAPI routes
+  core/               settings、logging、errors 和服务基础能力
+
+catalog/
+  models/             模型来源、目标目录、大小和 sha256
+  workflows/          工作流说明和依赖模型 ID
+  plugins/            custom node 仓库信息
+  workflow-files/     原始 ComfyUI workflow JSON
+
+scripts/
+  run.sh              日常运维总入口
+  dev.sh              精确进程生命周期入口
+  catalog.sh          catalog 校验、查看、下载、插件管理原子入口
+  remote.sh           本机侧 SSH、deploy、status、logs、tunnel、sync helper
+  verify.sh           项目验证入口
+
+docs/
+  architecture.md     架构和职责边界
+  runbooks/           远程部署、runtime 修复和运维流程
+```
+
+## 环境要求
+
+- 本机 macOS 可以 SSH 到远端 GPU 机器。
+- 远端 Linux GPU 机器已有可用或可导入的 ComfyUI runtime。
+- 使用 `uv` 管理本项目 Python 环境。
+- 使用 Bash 运行项目脚本。
+- 本项目 Python 版本要求 `>=3.13`。
+- 本机和远端代码目录之间可以通过 Git 或受控同步更新代码。
+
+稳定使用时，优先复用已经验证过的 ComfyUI runtime，再做最小依赖修复。
+
+## 配置
+
+每个代码目录只维护一份配置真源：`.env`。
+
+```text
+本机 macOS code dir
+  .env                 本机编排配置，包含 REMOTE__*
+
+远端 Linux code dir
+  .env                 远端运行配置，包含 COMFY__*
+```
+
+从模板创建配置：
+
+```bash
+cp .env.example .env
+```
+
+关键配置：
+
+```dotenv
+RUNTIME__APP_ENV=local
+COMFY__WORKSPACE_DIR=/data/wangqiao/comfy-shell-v3-workspace
+COMFY__HOST=127.0.0.1
+COMFY__PORT=8188
+API_HOST=127.0.0.1
+API_PORT=8700
+REMOTE__HOST=47.94.108.140
+REMOTE__CODE_DIR=/data/wangqiao/comfy-shell-v3
+```
+
+`REMOTE__*` 只放在本机 `.env`。远端 GPU 机器不应该依赖本机编排配置。
+
+## 快速开始
+
+安装依赖：
 
 ```bash
 uv sync
 ```
 
-Run the default verification:
+运行默认验证：
 
 ```bash
 ./scripts/verify.sh check
 ```
 
-Show local development commands:
+查看日常运维入口：
 
 ```bash
-./scripts/dev.sh help
+./scripts/run.sh help
 ```
 
-Check the local development environment:
+在远端代码目录初始化 workspace：
 
 ```bash
-./scripts/dev.sh doctor
+./scripts/run.sh init dev
 ```
 
-Scan common local ports:
-
-```bash
-./scripts/dev.sh ports 8100 25432 26379
-```
-
-Start the common local development stack:
+在远端启动日常开发服务集合：
 
 ```bash
 ./scripts/run.sh up dev
 ./scripts/run.sh status dev
+```
+
+本机 macOS 建立 SSH tunnel：
+
+```bash
+./scripts/run.sh remote tunnel
+```
+
+然后在本机浏览器打开：
+
+```text
+http://127.0.0.1:8188
+```
+
+## 日常运维
+
+日常只需要记 `run.sh`：
+
+```bash
+./scripts/run.sh status dev
+./scripts/run.sh up dev
 ./scripts/run.sh down dev
 ./scripts/run.sh restart dev
-./scripts/run.sh check dev
+./scripts/run.sh logs comfyui
 ```
 
-This starts PostgreSQL and Redis with Docker Compose, then starts the FastAPI app on the host. The app process can start without opening a database connection, but `/ready` and the `items` API require a reachable PostgreSQL database unless tests inject a session override.
-
-Manage local services in three ways:
-
-| Entry | Use it for |
-|---|---|
-| `./scripts/run.sh up|status|down|restart|check dev` | Daily local development environment as one recipe: Docker PostgreSQL / Redis plus host API. |
-| `./scripts/dev.sh start|status|stop api` | Precise host API process control. |
-| `./scripts/deploy.sh up|status|down compose-deps|compose-full` | Explicit Docker Compose dependencies or full Docker API/dependencies. |
-
-Run only local dependencies with Docker Compose:
+精确排障时再使用底层脚本：
 
 ```bash
-./scripts/deploy.sh up compose-deps
+./scripts/dev.sh status comfyui
+./scripts/dev.sh stop comfyui
+./scripts/catalog.sh validate
+./scripts/remote.sh status
 ```
 
-Run only the host API:
+不要手工修改 `current`、`current-env` 或 `current/models` 软链接。切换 runtime 使用 `run.sh`。
+
+## Runtime 管理
+
+远端 workspace 中的 ComfyUI runtime 独立于本项目源码：
+
+```text
+/data/wangqiao/comfy-shell-v3-workspace/
+  runtimes/
+    comfyui-0.27.0-known-good/
+    comfyui-0.36.0/
+  current -> runtimes/<name>/ComfyUI
+  current-env -> runtimes/<name>/.venv
+  models/
+```
+
+导入一个已验证 runtime：
 
 ```bash
-./scripts/dev.sh start api
+./scripts/run.sh import-runtime comfyui-0.27.0-known-good \
+  --comfy-dir /data/wangqiao/comfy-shell/ComfyUI \
+  --venv-dir /data/wangqiao/comfy-shell/.venv
 ```
 
-Run the API, PostgreSQL, and Redis in Compose:
+从 ComfyUI 源码包和 seed runtime 环境准备新 runtime：
 
 ```bash
-./scripts/deploy.sh up compose-full
+./scripts/run.sh stage-runtime comfyui-0.36.0 \
+  --archive /data/wangqiao/comfy-shell-v3-workspace/staging/ComfyUI-0.36.0.zip \
+  --seed-runtime comfyui-0.27.0-known-good
 ```
 
-Generate local secrets and encoded connection URLs:
+切换当前 runtime：
 
 ```bash
-./scripts/tools.sh secret
-./scripts/tools.sh env-url postgres --username postgres --host 127.0.0.1 --database fastapi_lite --password-stdin
+./scripts/dev.sh stop comfyui
+./scripts/run.sh switch comfyui-0.36.0
+./scripts/dev.sh start comfyui
 ```
 
-## Documentation
+同一个端口上同一时间只应该运行一个 ComfyUI runtime。
 
-- Docs index: [`docs/README.md`](docs/README.md)
-- Global mental model: [`docs/notes/FastAPI_Lite 全局心智模型.md`](<docs/notes/FastAPI_Lite 全局心智模型.md>)
-- Current implementation facts: [`docs/current/implementation.md`](docs/current/implementation.md)
-- HTTP API contract: [`docs/contracts/api-contract.md`](docs/contracts/api-contract.md)
-- Extension contract: [`docs/contracts/extension-contract.md`](docs/contracts/extension-contract.md)
-- Drift checklist and P1 plan: [`docs/plans/drift-checklist.md`](docs/plans/drift-checklist.md)
-- Scripts contract: [`scripts/README.md`](scripts/README.md)
-- Original skeleton target, retained as historical input: [`docs/FastAPI服务骨架.md`](docs/FastAPI服务骨架.md)
+## Catalog 管理
 
-## Verification
+`catalog/` 是给人读、也给脚本读的信息真源：
 
-Default gate:
+```text
+catalog/workflows/*.toml
+  工作流说明和依赖模型 ID
+
+catalog/models/*.toml
+  模型来源、文件名、目标 models 子目录、大小和 sha256
+
+catalog/plugins/*.toml
+  custom node 仓库信息
+```
+
+映射关系保持单向：
+
+```text
+workflow model id
+  -> catalog model entry
+  -> source + filename + target
+  -> workspace models/<target>/<filename>
+```
+
+校验 catalog：
+
+```bash
+./scripts/run.sh catalog validate
+```
+
+查看某个工作流的模型状态：
+
+```bash
+./scripts/run.sh catalog inspect workflow video_wan2_2_14b_animate \
+  --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
+```
+
+只探测链接，不下载：
+
+```bash
+./scripts/run.sh catalog probe workflow video_wan2_2_14b_animate
+```
+
+远端后台下载工作流缺失模型：
+
+```bash
+./scripts/run.sh catalog download-bg workflow video_wan2_2_14b_animate \
+  --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
+```
+
+查看后台下载状态：
+
+```bash
+./scripts/run.sh catalog download-bg-status workflow video_wan2_2_14b_animate
+```
+
+模型已经落盘后，计算或回填元信息：
+
+```bash
+./scripts/run.sh catalog metadata workflow video_wan2_2_14b_animate \
+  --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
+
+./scripts/run.sh catalog enrich workflow video_wan2_2_14b_animate \
+  --models-dir /data/wangqiao/comfy-shell-v3-workspace/models \
+  --write
+```
+
+`size_hint` 只给人读。`size_bytes` 和 `sha256` 是机器可校验字段。
+
+## 插件管理
+
+通过 plugin catalog 安装和更新 custom nodes：
+
+```bash
+./scripts/run.sh catalog install plugins
+./scripts/run.sh catalog update plugins
+./scripts/run.sh catalog installed plugins
+```
+
+插件命令负责把仓库 clone、fetch、checkout、pull 到当前 runtime 的 `custom_nodes/` 目录。它不会自动安装所有插件依赖。安装或更新插件前先停止 ComfyUI。
+
+## 远端访问
+
+常用远端目录：
+
+```text
+/data/wangqiao/comfy-shell-v3/             code dir
+/data/wangqiao/comfy-shell-v3-workspace/   workspace dir
+```
+
+本机开发流程：
+
+```bash
+./scripts/verify.sh check
+git push
+./scripts/run.sh remote status
+```
+
+远端部署流程：
+
+```bash
+cd /data/wangqiao/comfy-shell-v3
+git pull --ff-only
+uv sync --frozen
+./scripts/run.sh restart dev
+```
+
+本机建立 tunnel：
+
+```bash
+./scripts/run.sh remote tunnel
+```
+
+浏览器入口：
+
+```text
+ComfyUI Web      http://127.0.0.1:8188
+Comfy shell API  http://127.0.0.1:8700/docs
+```
+
+## 文档
+
+- 架构设计：[docs/architecture.md](docs/architecture.md)
+- 远程部署：[docs/runbooks/远程部署.md](docs/runbooks/远程部署.md)
+- Runtime 修复记录：[docs/runbooks/runtime-patches.md](docs/runbooks/runtime-patches.md)
+- 脚本合同：[scripts/README.md](scripts/README.md)
+- Agent 维护规则：[AGENTS.md](AGENTS.md)
+
+项目里仍保留部分 FastAPI 模板历史文档。判断当前 ComfyUI shell 行为时，优先看本 README、`docs/architecture.md`、runbooks、scripts 和 tests。
+
+## 验证
+
+默认验证：
 
 ```bash
 ./scripts/verify.sh check
 ```
 
-PostgreSQL integration gate:
+运行测试：
 
 ```bash
-./scripts/verify.sh postgres
+uv run pytest
 ```
 
-The Postgres gate is opt-in and protected by a `_test` database check.
-
-Migration roundtrip gate:
+校验 catalog：
 
 ```bash
-./scripts/verify.sh migration-roundtrip
+./scripts/run.sh catalog validate
 ```
+
+修改 runtime、模型、插件或远端运维相关能力前，先运行最小相关脚本命令，再运行默认验证。
+
+## 运维规则
+
+- 同一个端口只运行一个 ComfyUI runtime。
+- 只维护一份共享 workspace `models/`。
+- 模型、工作流和插件信息放在 `catalog/`。
+- 日常操作优先使用 `scripts/run.sh`。
+- 不在远端 GPU 机器上手改源码；本机修改后再部署或远端拉取。
+- 大模型文件、runtime 目录、日志和真实密钥不进 Git。
