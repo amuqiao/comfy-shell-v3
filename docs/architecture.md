@@ -160,7 +160,11 @@ catalog/workflow-files/     # 原始 workflow JSON，作为资产保存，不自
 - CLI 只执行 catalog 声明，不通过临时参数覆盖模型来源。
 - `size_hint` 是人读提示，允许通过探测结果后补；`size_bytes` 是可选机器校验字段，配置后下载和状态检查都必须按字节数校验。
 - Catalog 对外暴露稳定代码合同：`inspect` 解释 workspace 本地状态，`probe` 探测来源链接和远端大小，`missing` 输出 workflow 可补偿模型列表，`download` 执行落盘。
+- `metadata` 从已落盘模型文件计算本地大小和 sha256；`enrich` 根据 metadata 生成 catalog 补全建议，默认 dry-run，只有显式 `--write` 才写回，只有显式 `--overwrite` 才覆盖已有字段。
+- Catalog 不解析 nohup 日志来回填配置，不维护模型知识库，也不把运行态状态写入 `catalog/models/*.toml`。
 - 下载命令返回 JSON 执行回执，包含 `id`、`status`、`source`、来源定位字段、`target_path`、最终 `path`、`local_size`、`size_hint`、`size_bytes` 和 `sha256`；第一版不维护下载历史或审计数据库。
+- 第一版只支持一个 workflow 串行下载；不支持多 workflow 下载入口，不支持模型并发下载。同一 workspace 同一时间只允许一个后台下载任务。
+- 同一个目标模型文件只能由一个下载任务持有，目标文件级锁位于 workspace `models/.locks/` 下；已存在且校验通过的模型直接返回 `exists`，不重复下载。
 
 ## 配置模型
 
@@ -314,8 +318,10 @@ COMFY__PORT=8188
 | Catalog 状态检查 | `run.sh catalog inspect ...` 从 workspace 扫描模型状态，状态包括 `exists`、`missing`、`downloading`、`size_mismatch`、`sha_mismatch`、`path_conflict`。 |
 | Catalog 来源探测 | `run.sh catalog probe ...` 探测模型来源链接、大小、etag 和可补充的 `size_hint` / `size_bytes`，不下载文件。 |
 | Catalog 查漏补缺 | `run.sh catalog missing workflow ...` 基于 inspect 合同输出可补偿模型 ID，不靠人工读日志。 |
-| Catalog 下载 | `scripts/catalog.sh` 作为原子入口，`run.sh catalog ...` 作为日常编排入口，可指定 `--models-dir`。 |
-| Catalog 后台下载 | `run.sh catalog download-bg ...` 用远端 `nohup` 启动长下载，返回 pid 文件和日志文件；不引入任务队列。 |
+| Catalog 元信息计算 | `run.sh catalog metadata ...` 基于已落盘模型计算本地大小、可读大小和 sha256。 |
+| Catalog 配置补全 | `run.sh catalog enrich ...` 基于 metadata 生成或显式写回 `size_hint`、`size_bytes`、`sha256`。 |
+| Catalog 下载 | `scripts/catalog.sh` 作为原子入口，`run.sh catalog ...` 作为日常编排入口；单 workflow 串行下载模型，可指定 `--models-dir`。 |
+| Catalog 后台下载 | `run.sh catalog download-bg ...` 用远端 `nohup` 启动长下载；同一 workspace 只允许一个后台下载任务，不引入任务队列。 |
 | 插件管理 | 从 `catalog/plugins` 安装、更新和检查当前 runtime 的 `custom_nodes`；服务运行时拒绝修改插件。 |
 | 服务管理 | 启动、停止、状态、日志，只管理本项目拥有的 ComfyUI 进程。 |
 | API 控制面 | 暴露 runtime、模型、服务状态和启停接口，默认只绑定 `127.0.0.1`。 |

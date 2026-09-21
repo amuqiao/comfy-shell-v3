@@ -86,6 +86,16 @@ def build_parser() -> argparse.ArgumentParser:
     catalog_missing.add_argument("kind", choices=["workflow"])
     catalog_missing.add_argument("id")
     catalog_missing.add_argument("--models-dir")
+    catalog_metadata = catalog_subparsers.add_parser("metadata")
+    catalog_metadata.add_argument("kind", choices=["model", "workflow"])
+    catalog_metadata.add_argument("id")
+    catalog_metadata.add_argument("--models-dir")
+    catalog_enrich = catalog_subparsers.add_parser("enrich")
+    catalog_enrich.add_argument("kind", choices=["model", "workflow"])
+    catalog_enrich.add_argument("id")
+    catalog_enrich.add_argument("--models-dir")
+    catalog_enrich.add_argument("--write", action="store_true")
+    catalog_enrich.add_argument("--overwrite", action="store_true")
     catalog_download = catalog_subparsers.add_parser("download")
     catalog_download.add_argument("kind", choices=["model", "workflow"])
     catalog_download.add_argument("id")
@@ -167,6 +177,28 @@ def run(args: argparse.Namespace) -> Any:
         return catalog.probe_workflow_models(settings, args.id, catalog_dir=catalog_dir)
     if args.domain == "catalog" and args.action == "missing" and args.kind == "workflow":
         return catalog.missing_workflow_models(settings, args.id, models_dir=args.models_dir, catalog_dir=catalog_dir)
+    if args.domain == "catalog" and args.action == "metadata" and args.kind == "model":
+        return catalog.metadata_model_by_id(settings, args.id, models_dir=args.models_dir, catalog_dir=catalog_dir)
+    if args.domain == "catalog" and args.action == "metadata" and args.kind == "workflow":
+        return catalog.metadata_workflow_models(settings, args.id, models_dir=args.models_dir, catalog_dir=catalog_dir)
+    if args.domain == "catalog" and args.action == "enrich" and args.kind == "model":
+        return catalog.enrich_model_by_id(
+            settings,
+            args.id,
+            models_dir=args.models_dir,
+            catalog_dir=catalog_dir,
+            write=args.write,
+            overwrite=args.overwrite,
+        )
+    if args.domain == "catalog" and args.action == "enrich" and args.kind == "workflow":
+        return catalog.enrich_workflow_models(
+            settings,
+            args.id,
+            models_dir=args.models_dir,
+            catalog_dir=catalog_dir,
+            write=args.write,
+            overwrite=args.overwrite,
+        )
     if args.domain == "catalog" and args.action == "download" and args.kind == "model":
         return catalog.download_model_by_id(settings, args.id, models_dir=args.models_dir, catalog_dir=catalog_dir)
     if args.domain == "catalog" and args.action == "download" and args.kind == "workflow":

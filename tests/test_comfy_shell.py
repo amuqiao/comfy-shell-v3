@@ -1,3 +1,4 @@
+import hashlib
 import json
 import io
 import shutil
@@ -390,6 +391,216 @@ def test_catalog_missing_workflow_returns_actionable_model_ids(tmp_path):
 
     assert result["model_ids"] == ["missing_model", "bad_size_model"]
     assert [item["status"] for item in result["items"]] == ["missing", "size_mismatch"]
+
+
+def test_catalog_metadata_model_reports_file_facts(tmp_path):
+    catalog_dir = tmp_path / "catalog"
+    source_model = tmp_path / "source.safetensors"
+    source_model.write_text("data", encoding="utf-8")
+    write_model_lifecycle_catalog(catalog_dir, source_model)
+    settings = comfy_settings(tmp_path)
+    models_dir = tmp_path / "models"
+    target = models_dir / "checkpoints" / "exists.safetensors"
+    target.parent.mkdir(parents=True)
+    target.write_text("data", encoding="utf-8")
+
+    result = catalog.metadata_model_by_id(
+        settings,
+        "exists_model",
+        models_dir=str(models_dir),
+        catalog_dir=catalog_dir,
+    )
+
+    assert result["id"] == "exists_model"
+    assert result["path"] == str(target)
+    assert result["local_size"] == 4
+    assert result["computed_size_hint"] == "4B"
+    assert result["computed_size_bytes"] == 4
+    assert result["computed_sha256"] == hashlib.sha256(b"data").hexdigest()
+
+
+def test_catalog_metadata_model_rejects_missing_file(tmp_path):
+    catalog_dir = tmp_path / "catalog"
+    source_model = tmp_path / "source.safetensors"
+    source_model.write_text("data", encoding="utf-8")
+    write_model_lifecycle_catalog(catalog_dir, source_model)
+
+    with pytest.raises(AppError) as exc:
+        catalog.metadata_model_by_id(
+            comfy_settings(tmp_path),
+            "missing_model",
+            models_dir=str(tmp_path / "models"),
+            catalog_dir=catalog_dir,
+        )
+
+    assert exc.value.code == "RESOURCE_NOT_FOUND"
+    assert exc.value.details["resource"] == "model_file"
+    assert exc.value.details["id"] == "missing_model"
+
+
+def test_catalog_enrich_model_dry_run_reports_updates_without_writing(tmp_path):
+    catalog_dir = tmp_path / "catalog"
+    source_model = tmp_path / "source.safetensors"
+    source_model.write_text("data", encoding="utf-8")
+    write_model_lifecycle_catalog(catalog_dir, source_model)
+    model_file = catalog_dir / "models" / "demo.toml"
+    original = model_file.read_text(encoding="utf-8")
+    settings = comfy_settings(tmp_path)
+    models_dir = tmp_path / "models"
+    target = models_dir / "checkpoints" / "exists.safetensors"
+    target.parent.mkdir(parents=True)
+    target.write_text("data", encoding="utf-8")
+
+    result = catalog.enrich_model_by_id(
+        settings,
+        "exists_model",
+        models_dir=str(models_dir),
+        catalog_dir=catalog_dir,
+    )
+
+    assert result["write"] is False
+    assert result["changed"] is False
+    assert result["updates"] == {"sha256": hashlib.sha256(b"data").hexdigest()}
+    assert result["observed"]["size_hint"] == "4B"
+    assert result["observed"]["size_bytes"] == 4
+    assert model_file.read_text(encoding="utf-8") == original
+
+
+def test_catalog_enrich_model_write_backfills_missing_fields(tmp_path):
+    catalog_dir = tmp_path / "catalog"
+    source_model = tmp_path / "source.safetensors"
+    source_model.write_text("data", encoding="utf-8")
+    write_model_lifecycle_catalog(catalog_dir, source_model)
+    settings = comfy_settings(tmp_path)
+    models_dir = tmp_path / "models"
+    target = models_dir / "checkpoints" / "downloading.safetensors"
+    target.parent.mkdir(parents=True)
+    target.write_text("data", encoding="utf-8")
+    expected_sha = hashlib.sha256(b"data").hexdigest()
+
+    result = catalog.enrich_model_by_id(
+        settings,
+        "downloading_model",
+        models_dir=str(models_dir),
+        catalog_dir=catalog_dir,
+        write=True,
+    )
+
+    content = (catalog_dir / "models" / "demo.toml").read_text(encoding="utf-8")
+    assert result["changed"] is True
+    assert result["updates"] == {
+        "size_hint": "4B",
+        "size_bytes": 4,
+        "sha256": expected_sha,
+    }
+    assert 'size_hint = "4B"' in content
+    assert "size_bytes = 4" in content
+    assert f'sha256 = "{expected_sha}"' in content
+    assert catalog.show_model("downloading_model", catalog_dir)["sha256"] == expected_sha
+
+
+def test_catalog_enrich_model_requires_overwrite_for_existing_fields(tmp_path):
+    catalog_dir = tmp_path / "catalog"
+    source_model = tmp_path / "source.safetensors"
+    source_model.write_text("data", encoding="utf-8")
+    write_model_lifecycle_catalog(catalog_dir, source_model)
+    model_file = catalog_dir / "models" / "demo.toml"
+    model_file.write_text(model_file.read_text(encoding="utf-8").replace("size_bytes = 99", "size_bytes=99"), encoding="utf-8")
+    settings = comfy_settings(tmp_path)
+    models_dir = tmp_path / "models"
+    target = models_dir / "checkpoints" / "bad-size.safetensors"
+    target.parent.mkdir(parents=True)
+    target.write_text("data", encoding="utf-8")
+
+    dry_result = catalog.enrich_model_by_id(
+        settings,
+        "bad_size_model",
+        models_dir=str(models_dir),
+        catalog_dir=catalog_dir,
+        write=True,
+    )
+    overwrite_result = catalog.enrich_model_by_id(
+        settings,
+        "bad_size_model",
+        models_dir=str(models_dir),
+        catalog_dir=catalog_dir,
+        write=True,
+        overwrite=True,
+    )
+
+    expected_sha = hashlib.sha256(b"data").hexdigest()
+    assert dry_result["updates"] == {
+        "size_hint": "4B",
+        "sha256": expected_sha,
+    }
+    assert overwrite_result["updates"] == {
+        "size_bytes": 4,
+    }
+    content = model_file.read_text(encoding="utf-8")
+    bad_size_section = content.split("[models.bad_size_model]", maxsplit=1)[1]
+    assert "size_bytes=99" not in content
+    assert bad_size_section.count("size_bytes") == 1
+    assert catalog.show_model("bad_size_model", catalog_dir)["size_bytes"] == 4
+
+
+def test_catalog_enrich_workflow_write_does_not_partially_write_when_model_missing(tmp_path):
+    catalog_dir = tmp_path / "catalog"
+    source_model = tmp_path / "source.safetensors"
+    source_model.write_text("data", encoding="utf-8")
+    write_model_lifecycle_catalog(catalog_dir, source_model)
+    model_file = catalog_dir / "models" / "demo.toml"
+    original = model_file.read_text(encoding="utf-8")
+    settings = comfy_settings(tmp_path)
+    models_dir = tmp_path / "models"
+    target = models_dir / "checkpoints" / "exists.safetensors"
+    target.parent.mkdir(parents=True)
+    target.write_text("data", encoding="utf-8")
+
+    with pytest.raises(AppError) as exc:
+        catalog.enrich_workflow_models(
+            settings,
+            "demo_workflow",
+            models_dir=str(models_dir),
+            catalog_dir=catalog_dir,
+            write=True,
+        )
+
+    assert exc.value.code == "RESOURCE_NOT_FOUND"
+    assert exc.value.details["resource"] == "model_file"
+    assert exc.value.details["id"] == "missing_model"
+    assert model_file.read_text(encoding="utf-8") == original
+
+
+def test_catalog_enrich_workflow_reports_changed_count(tmp_path):
+    catalog_dir = tmp_path / "catalog"
+    source_model = tmp_path / "source.safetensors"
+    source_model.write_text("data", encoding="utf-8")
+    write_model_lifecycle_catalog(catalog_dir, source_model)
+    settings = comfy_settings(tmp_path)
+    models_dir = tmp_path / "models"
+    checkpoints = models_dir / "checkpoints"
+    checkpoints.mkdir(parents=True)
+    (checkpoints / "exists.safetensors").write_text("data", encoding="utf-8")
+    (checkpoints / "missing.safetensors").write_text("0123456789", encoding="utf-8")
+    (checkpoints / "downloading.safetensors").write_text("data", encoding="utf-8")
+    (checkpoints / "bad-size.safetensors").write_text("data", encoding="utf-8")
+
+    result = catalog.enrich_workflow_models(
+        settings,
+        "demo_workflow",
+        models_dir=str(models_dir),
+        catalog_dir=catalog_dir,
+        write=True,
+    )
+
+    assert result["changed"] is True
+    assert result["changed_count"] == 4
+    assert [item["id"] for item in result["items"]] == [
+        "exists_model",
+        "missing_model",
+        "downloading_model",
+        "bad_size_model",
+    ]
 
 
 def test_catalog_probe_model_reports_link_metadata(tmp_path, monkeypatch):

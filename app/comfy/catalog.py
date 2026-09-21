@@ -686,6 +686,253 @@ def missing_workflow_models(
     }
 
 
+def metadata_model_by_id(
+    settings: AppSettings,
+    model_id: str,
+    *,
+    models_dir: str | None = None,
+    catalog_dir: Path | None = None,
+) -> dict[str, Any]:
+    bundle = load_catalog(catalog_dir)
+    if model_id not in bundle.models:
+        raise AppError("RESOURCE_NOT_FOUND", details={"resource": "model", "id": model_id})
+    root = resolve_models_dir(settings, models_dir)
+    return metadata_model_entry(model_id, bundle.models[model_id], root)
+
+
+def metadata_workflow_models(
+    settings: AppSettings,
+    workflow_id: str,
+    *,
+    models_dir: str | None = None,
+    catalog_dir: Path | None = None,
+) -> dict[str, Any]:
+    bundle = load_catalog(catalog_dir)
+    if workflow_id not in bundle.workflows:
+        raise AppError("RESOURCE_NOT_FOUND", details={"resource": "workflow", "id": workflow_id})
+    root = resolve_models_dir(settings, models_dir)
+    workflow = bundle.workflows[workflow_id]
+    return {
+        "workflow": workflow_id,
+        "models_dir": str(root),
+        "items": [metadata_model_entry(model_id, bundle.models[model_id], root) for model_id in workflow.models],
+    }
+
+
+def metadata_model_entry(model_id: str, entry: ModelEntry, models_dir: Path) -> dict[str, Any]:
+    destination = destination_for_model(models_dir, entry)
+    if not destination.is_file():
+        raise AppError("RESOURCE_NOT_FOUND", details={"resource": "model_file", "id": model_id, "path": str(destination)})
+    local_size = destination.stat().st_size
+    return {
+        **model_contract_result(model_id, entry, destination),
+        "local_size": local_size,
+        "computed_size_hint": format_size_hint(local_size),
+        "computed_size_bytes": local_size,
+        "computed_sha256": file_sha256(destination),
+    }
+
+
+def enrich_model_by_id(
+    settings: AppSettings,
+    model_id: str,
+    *,
+    models_dir: str | None = None,
+    catalog_dir: Path | None = None,
+    write: bool = False,
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    catalog_root = (catalog_dir or default_catalog_dir()).resolve()
+    bundle = load_catalog(catalog_root)
+    if model_id not in bundle.models:
+        raise AppError("RESOURCE_NOT_FOUND", details={"resource": "model", "id": model_id})
+    root = resolve_models_dir(settings, models_dir)
+    result = build_enrich_result(
+        model_id,
+        bundle.models[model_id],
+        metadata_model_entry(model_id, bundle.models[model_id], root),
+        find_model_catalog_file(catalog_root, model_id),
+        write=write,
+        overwrite=overwrite,
+    )
+    updates = result["updates"]
+    if write and updates:
+        apply_model_catalog_updates(Path(result["catalog_file"]), {model_id: updates})
+        load_catalog(catalog_root)
+    return result
+
+
+def enrich_workflow_models(
+    settings: AppSettings,
+    workflow_id: str,
+    *,
+    models_dir: str | None = None,
+    catalog_dir: Path | None = None,
+    write: bool = False,
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    catalog_root = (catalog_dir or default_catalog_dir()).resolve()
+    bundle = load_catalog(catalog_root)
+    if workflow_id not in bundle.workflows:
+        raise AppError("RESOURCE_NOT_FOUND", details={"resource": "workflow", "id": workflow_id})
+    root = resolve_models_dir(settings, models_dir)
+    workflow = bundle.workflows[workflow_id]
+    items = [
+        build_enrich_result(
+            model_id,
+            bundle.models[model_id],
+            metadata_model_entry(model_id, bundle.models[model_id], root),
+            find_model_catalog_file(catalog_root, model_id),
+            write=write,
+            overwrite=overwrite,
+        )
+        for model_id in workflow.models
+    ]
+    if write:
+        updates_by_file: dict[Path, dict[str, dict[str, Any]]] = {}
+        for item in items:
+            if item["updates"]:
+                path = Path(item["catalog_file"])
+                updates_by_file.setdefault(path, {})[item["id"]] = item["updates"]
+        for path, updates in updates_by_file.items():
+            apply_model_catalog_updates(path, updates)
+        if updates_by_file:
+            load_catalog(catalog_root)
+    return {
+        "workflow": workflow_id,
+        "write": write,
+        "overwrite": overwrite,
+        "changed": any(item["changed"] for item in items),
+        "changed_count": sum(1 for item in items if item["changed"]),
+        "items": items,
+    }
+
+
+def build_enrich_result(
+    model_id: str,
+    entry: ModelEntry,
+    metadata: dict[str, Any],
+    catalog_file: Path,
+    *,
+    write: bool,
+    overwrite: bool,
+) -> dict[str, Any]:
+    updates = enrich_updates(entry, metadata, overwrite=overwrite)
+    return {
+        "id": model_id,
+        "catalog_file": str(catalog_file),
+        "write": write,
+        "overwrite": overwrite,
+        "current": {
+            "size_hint": entry.size_hint,
+            "size_bytes": entry.size_bytes,
+            "sha256": entry.sha256,
+        },
+        "observed": {
+            "local_size": metadata["local_size"],
+            "size_hint": metadata["computed_size_hint"],
+            "size_bytes": metadata["computed_size_bytes"],
+            "sha256": metadata["computed_sha256"],
+        },
+        "updates": updates,
+        "changed": bool(write and updates),
+    }
+
+
+def enrich_updates(entry: ModelEntry, metadata: dict[str, Any], *, overwrite: bool) -> dict[str, Any]:
+    candidates = {
+        "size_hint": metadata["computed_size_hint"],
+        "size_bytes": metadata["computed_size_bytes"],
+        "sha256": metadata["computed_sha256"],
+    }
+    current = {
+        "size_hint": entry.size_hint,
+        "size_bytes": entry.size_bytes,
+        "sha256": entry.sha256,
+    }
+    updates: dict[str, Any] = {}
+    for key, value in candidates.items():
+        if value is None:
+            continue
+        if overwrite or current[key] is None:
+            if current[key] != value:
+                updates[key] = value
+    return updates
+
+
+def find_model_catalog_file(catalog_dir: Path, model_id: str) -> Path:
+    models_dir = catalog_dir / "models"
+    for path in sorted(models_dir.glob("*.toml")):
+        raw = read_toml(path)
+        models = raw.get("models", {})
+        if isinstance(models, dict) and model_id in models:
+            return path
+    raise AppError("RESOURCE_NOT_FOUND", details={"resource": "model_catalog_file", "id": model_id, "path": str(models_dir)})
+
+
+def update_model_catalog_fields(path: Path, model_id: str, updates: dict[str, Any]) -> None:
+    apply_model_catalog_updates(path, {model_id: updates})
+
+
+def apply_model_catalog_updates(path: Path, updates_by_model: dict[str, dict[str, Any]]) -> None:
+    text = path.read_text(encoding="utf-8")
+    updated = update_model_catalog_text(text, path=path, updates_by_model=updates_by_model)
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(updated, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def update_model_catalog_text(text: str, *, path: Path, updates_by_model: dict[str, dict[str, Any]]) -> str:
+    lines = text.splitlines()
+    for model_id, updates in updates_by_model.items():
+        lines = update_model_catalog_lines(lines, model_id, updates, path=path)
+    updated = "\n".join(lines) + "\n"
+    try:
+        tomllib.loads(updated)
+    except tomllib.TOMLDecodeError as exc:
+        raise AppError("REQUEST_INVALID", details={"resource": "catalog_file", "path": str(path), "error": str(exc)}) from exc
+    return updated
+
+
+def update_model_catalog_lines(lines: list[str], model_id: str, updates: dict[str, Any], *, path: Path) -> list[str]:
+    section_header = f"[models.{model_id}]"
+    section_start = next((index for index, line in enumerate(lines) if line.strip() == section_header), None)
+    if section_start is None:
+        raise AppError("RESOURCE_NOT_FOUND", details={"resource": "model_section", "id": model_id, "path": str(path)})
+    section_end = len(lines)
+    for index in range(section_start + 1, len(lines)):
+        if lines[index].strip().startswith("[") and lines[index].strip().endswith("]"):
+            section_end = index
+            break
+
+    updated_lines = list(lines)
+    insert_at = section_end
+    for key, value in updates.items():
+        replacement = f"{key} = {format_toml_value(value)}"
+        key_pattern = re.compile(rf"^\s*{re.escape(key)}\s*=")
+        found = False
+        for index in range(section_start + 1, section_end):
+            if key_pattern.match(updated_lines[index]):
+                updated_lines[index] = replacement
+                found = True
+                break
+        if not found:
+            updated_lines.insert(insert_at, replacement)
+            insert_at += 1
+            section_end += 1
+
+    return updated_lines
+
+
+def format_toml_value(value: Any) -> str:
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, str):
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+    raise AppError("REQUEST_INVALID", details={"resource": "toml_value", "reason": "unsupported_value_type", "value": value})
+
+
 def inspect_model_entry(model_id: str, entry: ModelEntry, models_dir: Path) -> dict[str, Any]:
     destination = destination_for_model(models_dir, entry)
     base = model_contract_result(model_id, entry, destination)

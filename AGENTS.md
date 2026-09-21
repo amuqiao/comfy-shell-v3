@@ -78,17 +78,22 @@
   - 查看工作流模型状态：`./scripts/run.sh catalog inspect workflow <workflow-id> --models-dir /data/wangqiao/comfy-shell-v3-workspace/models`。
   - 探测模型来源链接和大小：`./scripts/run.sh catalog probe model <model-id>`；探测 workflow 用 `probe workflow <workflow-id>`。
   - 查漏补缺列表：`./scripts/run.sh catalog missing workflow <workflow-id> --models-dir /data/wangqiao/comfy-shell-v3-workspace/models`。
+  - 计算已落盘模型元信息：`./scripts/run.sh catalog metadata model <model-id> --models-dir /data/wangqiao/comfy-shell-v3-workspace/models`。
+  - 生成 catalog 补全建议：`./scripts/run.sh catalog enrich workflow <workflow-id> --models-dir /data/wangqiao/comfy-shell-v3-workspace/models`；默认 dry-run，只有显式 `--write` 才写回，只有显式 `--overwrite` 才覆盖已有字段。
   - 下载单个模型：`./scripts/run.sh catalog download model <model-id> --models-dir /data/wangqiao/comfy-shell-v3-workspace/models`。
   - 下载工作流依赖模型：`./scripts/run.sh catalog download workflow <workflow-id> --models-dir /data/wangqiao/comfy-shell-v3-workspace/models`。
   - 远端后台下载单个模型：`./scripts/run.sh catalog download-bg model <model-id> --models-dir /data/wangqiao/comfy-shell-v3-workspace/models`。
   - 远端后台下载工作流依赖模型：`./scripts/run.sh catalog download-bg workflow <workflow-id> --models-dir /data/wangqiao/comfy-shell-v3-workspace/models`。
   - 查看后台下载状态：`./scripts/run.sh catalog download-bg-status <model|workflow> <id>`；按返回的 `log_file` 查看日志，按 `exit_code` 判断后台命令是否成功结束。
   - 下载前先执行 `./scripts/run.sh catalog validate`，确认 catalog schema、工作流引用和 workflow 文件路径有效。
+  - 第一版只支持一个 workflow 串行下载模型；不要新增多 workflow 下载入口，不要新增模型并发下载入口。
+  - 同一 workspace 同一时间只允许一个 `download-bg` 后台下载任务；不要绕过 `catalog-download.active` 门禁另起 nohup。
   - 同一个目标模型文件只能有一个下载任务；下载实现必须使用 `models/.locks/<target>/<filename>.lock` 目标文件级锁，不要新增绕过锁的下载脚本。
   - 下载结果必须查看 JSON 回执，重点确认 `id`、`status`、`source`、`target_path`、`path`、`local_size`、`size_hint`、`size_bytes` 和来源定位字段。
   - 下载后用 `ls -lh /data/wangqiao/comfy-shell-v3-workspace/models/<target>/<filename>` 验证文件落盘。
   - 验证当前 ComfyUI 是否可见模型时，检查 `readlink -f /data/wangqiao/comfy-shell-v3-workspace/current/models` 必须指向 workspace `models/`，再检查 `current/models/<target>/<filename>`。
   - 不要在下载命令里临时决定模型子目录；子目录只能来自模型配置表的 `target`。
+  - 不要从 nohup 日志反向改 catalog；回填只能基于已落盘模型文件计算出的 `size_bytes`、`sha256` 和 `size_hint`。
   - 不要为了下载模型切换 runtime、重启 ComfyUI 或修改 `current` 软链接，除非任务明确要求。
   - 后台下载只用 `nohup`、pid 文件和日志文件，不引入数据库、任务队列或后台 worker。
   - 如果正式远端代码目录还没部署当前 catalog 能力，不要在远端手工编辑源码；可先用 `./scripts/run.sh remote sync-dev` 同步到 `REMOTE__SYNC_CODE_DIR` 做链路测试，下载目标仍然使用正式 workspace models 目录。

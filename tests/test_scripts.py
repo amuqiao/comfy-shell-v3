@@ -1086,6 +1086,8 @@ def test_run_catalog_lifecycle_commands_dispatch_to_catalog_script(tmp_path):
         ["./scripts/run.sh", "catalog", "inspect", "workflow", "video_wan2_2_14b_animate", "--models-dir", "/workspace/models"],
         ["./scripts/run.sh", "catalog", "probe", "model", "clip_vision_h"],
         ["./scripts/run.sh", "catalog", "missing", "workflow", "video_wan2_2_14b_animate", "--models-dir", "/workspace/models"],
+        ["./scripts/run.sh", "catalog", "metadata", "model", "clip_vision_h", "--models-dir", "/workspace/models"],
+        ["./scripts/run.sh", "catalog", "enrich", "workflow", "video_wan2_2_14b_animate", "--models-dir", "/workspace/models", "--write"],
     ]
     for command in commands:
         result = subprocess.run(
@@ -1102,6 +1104,8 @@ def test_run_catalog_lifecycle_commands_dispatch_to_catalog_script(tmp_path):
         "catalog inspect workflow video_wan2_2_14b_animate --models-dir /workspace/models",
         "catalog probe model clip_vision_h",
         "catalog missing workflow video_wan2_2_14b_animate --models-dir /workspace/models",
+        "catalog metadata model clip_vision_h --models-dir /workspace/models",
+        "catalog enrich workflow video_wan2_2_14b_animate --models-dir /workspace/models --write",
     ]
 
 
@@ -1172,6 +1176,129 @@ exit 0
     assert status_payload["status_file"] == payload["status_file"]
     if status_payload["status"] == "completed":
         assert status_payload["exit_code"] == 0
+
+
+def test_catalog_download_bg_returns_running_workspace_task_for_different_id(tmp_path):
+    root = tmp_path / "fake-root"
+    workspace = tmp_path / "workspace"
+    run_dir = workspace / "run"
+    logs_dir = workspace / "logs"
+    run_dir.mkdir(parents=True)
+    logs_dir.mkdir(parents=True)
+    (root / ".env").parent.mkdir(parents=True)
+    (root / ".env").write_text(f"COMFY__WORKSPACE_DIR={workspace}\n", encoding="utf-8")
+    runner_file = run_dir / "catalog-download-model-wan_2_1_vae.sh"
+    runner_file.write_text("#!/usr/bin/env sh\nsleep 30\n", encoding="utf-8")
+    runner_file.chmod(0o755)
+
+    process = subprocess.Popen([str(runner_file)])
+    try:
+        active_file = run_dir / "catalog-download.active"
+        pid_file = run_dir / "catalog-download-model-wan_2_1_vae.pid"
+        log_file = logs_dir / "catalog-download-model-wan_2_1_vae.log"
+        status_file = run_dir / "catalog-download-model-wan_2_1_vae.status"
+        active_file.write_text(
+            "\n".join(
+                [
+                    "kind=model",
+                    "id=wan_2_1_vae",
+                    f"pid={process.pid}",
+                    f"pid_file={pid_file}",
+                    f"log_file={log_file}",
+                    f"status_file={status_file}",
+                    f"runner_file={runner_file}",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        result = subprocess.run(
+            ["./scripts/catalog.sh", "download-bg", "workflow", "video_wan2_2_14b_animate"],
+            cwd=ROOT_DIR,
+            text=True,
+            capture_output=True,
+            check=False,
+            env=script_env(tmp_path, ROOT_DIR=str(root)),
+        )
+    finally:
+        process.terminate()
+        process.wait(timeout=5)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "running"
+    assert payload["kind"] == "model"
+    assert payload["id"] == "wan_2_1_vae"
+    assert payload["pid"] == process.pid
+    assert payload["runner_file"] == str(runner_file)
+
+
+def test_catalog_download_bg_ignores_stale_workspace_active_file(tmp_path):
+    root = tmp_path / "fake-root"
+    workspace = tmp_path / "workspace"
+    python = root / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    (root / ".env").write_text(f"COMFY__WORKSPACE_DIR={workspace}\n", encoding="utf-8")
+    python.write_text("#!/usr/bin/env python\nimport json, sys\njson.dump({'ok': True}, sys.stdout)\n", encoding="utf-8")
+    python.chmod(0o755)
+    run_dir = workspace / "run"
+    run_dir.mkdir(parents=True)
+    active_file = run_dir / "catalog-download.active"
+    active_file.write_text(
+        "\n".join(
+            [
+                "kind=model",
+                "id=stale_model",
+                "pid=999999999",
+                f"pid_file={run_dir / 'stale.pid'}",
+                f"log_file={workspace / 'logs' / 'stale.log'}",
+                f"status_file={run_dir / 'stale.status'}",
+                f"runner_file={run_dir / 'stale.sh'}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ["./scripts/catalog.sh", "download-bg", "workflow", "video_wan2_2_14b_animate"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "started"
+    assert payload["kind"] == "workflow"
+    assert payload["id"] == "video_wan2_2_14b_animate"
+
+
+def test_catalog_download_bg_releases_start_lock_when_start_fails(tmp_path):
+    root = tmp_path / "fake-root"
+    workspace = tmp_path / "workspace"
+    python = root / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    (root / ".env").write_text(f"COMFY__WORKSPACE_DIR={workspace}\n", encoding="utf-8")
+    python.write_text("#!/usr/bin/env python\nimport json, sys\njson.dump({'ok': True}, sys.stdout)\n", encoding="utf-8")
+    python.chmod(0o755)
+    runner_file = workspace / "run" / "catalog-download-model-wan_2_1_vae.sh"
+    runner_file.mkdir(parents=True)
+
+    result = subprocess.run(
+        ["./scripts/catalog.sh", "download-bg", "model", "wan_2_1_vae"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode != 0
+    assert not (workspace / "run" / "catalog-download.active.lock").exists()
 
 
 def test_catalog_download_bg_reports_failed_download(tmp_path):

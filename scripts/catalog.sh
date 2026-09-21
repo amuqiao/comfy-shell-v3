@@ -32,6 +32,14 @@ Usage:
   probe workflow <id>              探测工作流依赖模型来源链接、大小和可用性。
   missing workflow <id> [--models-dir PATH]
                                    列出工作流中缺失或校验异常的模型。
+  metadata model <id> [--models-dir PATH]
+                                   从已落盘模型文件计算 size 和 sha256。
+  metadata workflow <id> [--models-dir PATH]
+                                   批量计算工作流依赖模型的本地元信息。
+  enrich model <id> [--models-dir PATH] [--write] [--overwrite]
+                                   根据已落盘模型元信息生成或写回 catalog 补全字段。
+  enrich workflow <id> [--models-dir PATH] [--write] [--overwrite]
+                                   批量生成或写回工作流依赖模型的 catalog 补全字段。
   download model <id> [--models-dir PATH]
                                    下载指定模型到 models 目录。
   download workflow <id> [--models-dir PATH]
@@ -56,6 +64,8 @@ Usage:
   ./scripts/catalog.sh inspect workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
   ./scripts/catalog.sh probe model clip_vision_h
   ./scripts/catalog.sh missing workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
+  ./scripts/catalog.sh metadata model clip_vision_h --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
+  ./scripts/catalog.sh enrich workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
   ./scripts/catalog.sh download workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
   ./scripts/catalog.sh download-bg workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
   ./scripts/catalog.sh download-bg-status workflow video_wan2_2_14b_animate
@@ -103,6 +113,21 @@ download_bg_paths() {
     "$workspace/logs/catalog-download-$safe_name.log" \
     "$workspace/run/catalog-download-$safe_name.status" \
     "$workspace/run/catalog-download-$safe_name.sh"
+}
+
+download_bg_active_file() {
+  local workspace
+  workspace="$(catalog_workspace_dir)"
+  printf "%s" "$workspace/run/catalog-download.active"
+}
+
+download_bg_start_lock_dir() {
+  printf "%s.lock" "$(download_bg_active_file)"
+}
+
+release_download_bg_start_lock() {
+  local start_lock_dir="$1"
+  rmdir "$start_lock_dir" 2>/dev/null || true
 }
 
 pid_is_running() {
@@ -187,6 +212,35 @@ read_download_status_value() {
   grep -E "^${key}=" "$status_file" 2>/dev/null | tail -n 1 | cut -d= -f2- || true
 }
 
+write_download_active() {
+  local active_file="$1"
+  local kind="$2"
+  local id="$3"
+  local pid="$4"
+  local pid_file="$5"
+  local log_file="$6"
+  local status_file="$7"
+  local runner_file="$8"
+  local tmp_file="$active_file.tmp.$$"
+  {
+    printf "kind=%s\n" "$kind"
+    printf "id=%s\n" "$id"
+    printf "pid=%s\n" "$pid"
+    printf "pid_file=%s\n" "$pid_file"
+    printf "log_file=%s\n" "$log_file"
+    printf "status_file=%s\n" "$status_file"
+    printf "runner_file=%s\n" "$runner_file"
+  } > "$tmp_file"
+  mv "$tmp_file" "$active_file"
+}
+
+read_download_active_value() {
+  local active_file="$1"
+  local key="$2"
+  [[ -f "$active_file" ]] || return 0
+  grep -E "^${key}=" "$active_file" 2>/dev/null | tail -n 1 | cut -d= -f2- || true
+}
+
 pid_matches_runner() {
   local pid="$1"
   local runner_file="$2"
@@ -201,7 +255,8 @@ pid_matches_runner() {
 write_download_runner() {
   local runner_file="$1"
   local status_file="$2"
-  shift 2
+  local active_file="$3"
+  shift 3
   local command_line=""
   local arg
   for arg in "$@"; do
@@ -227,6 +282,9 @@ else
   } > $(printf "%q" "$status_file.tmp.\$\$")
   mv $(printf "%q" "$status_file.tmp.\$\$") $(printf "%q" "$status_file")
 fi
+if [ -f $(printf "%q" "$active_file") ] && grep -q "^pid=\$\$\\$" $(printf "%q" "$active_file"); then
+  rm -f $(printf "%q" "$active_file")
+fi
 exit "\$rc"
 EOF
   chmod +x "$runner_file"
@@ -243,6 +301,8 @@ download_bg() {
   local log_file
   local status_file
   local runner_file
+  local active_file
+  local start_lock_dir
   local existing_pid
   local -a paths
   mapfile -t paths < <(download_bg_paths "$kind" "$id")
@@ -250,22 +310,54 @@ download_bg() {
   log_file="${paths[1]}"
   status_file="${paths[2]}"
   runner_file="${paths[3]}"
-  mkdir -p "$(dirname "$pid_file")" "$(dirname "$log_file")" "$(dirname "$status_file")"
+  active_file="$(download_bg_active_file)"
+  start_lock_dir="$(download_bg_start_lock_dir)"
+  mkdir -p "$(dirname "$pid_file")" "$(dirname "$log_file")" "$(dirname "$status_file")" "$(dirname "$active_file")"
+  if ! mkdir "$start_lock_dir" 2>/dev/null; then
+    die "catalog background download is starting; retry status or download-bg later" 2
+  fi
+  trap "release_download_bg_start_lock $(printf "%q" "$start_lock_dir")" RETURN EXIT
+  trap "release_download_bg_start_lock $(printf "%q" "$start_lock_dir"); exit 130" INT TERM
+
+  if [[ -f "$active_file" ]]; then
+    local active_kind
+    local active_id
+    local active_pid
+    local active_pid_file
+    local active_log_file
+    local active_status_file
+    local active_runner_file
+    active_kind="$(read_download_active_value "$active_file" kind)"
+    active_id="$(read_download_active_value "$active_file" id)"
+    active_pid="$(read_download_active_value "$active_file" pid)"
+    active_pid_file="$(read_download_active_value "$active_file" pid_file)"
+    active_log_file="$(read_download_active_value "$active_file" log_file)"
+    active_status_file="$(read_download_active_value "$active_file" status_file)"
+    active_runner_file="$(read_download_active_value "$active_file" runner_file)"
+    if pid_is_running "$active_pid" && pid_matches_runner "$active_pid" "$active_runner_file"; then
+      release_download_bg_start_lock "$start_lock_dir"
+      print_download_bg_json "running" "$active_kind" "$active_id" "$active_pid" "$active_pid_file" "$active_log_file" "$active_status_file" "$active_runner_file"
+      return 0
+    fi
+  fi
 
   if [[ -f "$pid_file" ]]; then
     existing_pid="$(tr -d '[:space:]' < "$pid_file")"
     if pid_is_running "$existing_pid" && pid_matches_runner "$existing_pid" "$runner_file"; then
+      release_download_bg_start_lock "$start_lock_dir"
       print_download_bg_json "running" "$kind" "$id" "$existing_pid" "$pid_file" "$log_file" "$status_file" "$runner_file"
       return 0
     fi
   fi
 
-  write_download_runner "$runner_file" "$status_file" "$SCRIPT_DIR/catalog.sh" download "$kind" "$id" "$@"
+  write_download_runner "$runner_file" "$status_file" "$active_file" "$SCRIPT_DIR/catalog.sh" download "$kind" "$id" "$@"
   write_download_status "$status_file" "running" "" "$runner_file"
   nohup "$runner_file" >"$log_file" 2>&1 < /dev/null &
   printf "%s\n" "$!" > "$pid_file"
   local pid
   pid="$(tr -d '[:space:]' < "$pid_file")"
+  write_download_active "$active_file" "$kind" "$id" "$pid" "$pid_file" "$log_file" "$status_file" "$runner_file"
+  release_download_bg_start_lock "$start_lock_dir"
   print_download_bg_json "started" "$kind" "$id" "$pid" "$pid_file" "$log_file" "$status_file" "$runner_file"
 }
 
@@ -314,7 +406,7 @@ case "$cmd" in
     usage >&2
     exit 2
     ;;
-  validate|list|show|inspect|probe|missing|download|install|update|installed)
+  validate|list|show|inspect|probe|missing|metadata|enrich|download|install|update|installed)
     catalog_cli "$@"
     ;;
   download-bg)
