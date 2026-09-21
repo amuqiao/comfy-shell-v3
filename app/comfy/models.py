@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 
 from app.comfy.lock import WorkspaceLock
+from app.comfy.model_paths import model_download_lock_path, validate_relative_model_path
 from app.comfy.paths import ComfyPaths, comfy_paths
 from app.comfy.workspace import init_workspace
 from app.core.config import AppSettings
@@ -134,15 +135,32 @@ def hf_download(settings: AppSettings, repo_id: str, filename: str | None, targe
         from huggingface_hub import hf_hub_download
     except ImportError as exc:
         raise AppError("DEPENDENCY_UNAVAILABLE", details={"dependency": "huggingface_hub"}) from exc
+    try:
+        target = validate_relative_model_path(target, "target")
+        filename = validate_relative_model_path(filename, "filename", allow_trailing_slash=False) if filename else None
+    except ValueError as exc:
+        raise AppError("REQUEST_INVALID", details={"resource": "model", "error": str(exc)}) from exc
     paths = init_workspace(settings)
     target_dir = paths.models / target
     target_dir.mkdir(parents=True, exist_ok=True)
     token = settings.comfy.hf_token.get_secret_value() or None
-    downloaded = hf_hub_download(
-        repo_id=repo_id,
-        filename=filename,
-        local_dir=target_dir,
-        endpoint=settings.comfy.hf_endpoint,
-        token=token,
-    )
+    lock_file = model_download_lock_path(paths.models, target, filename, repo_id)
+    with WorkspaceLock(
+        lock_file,
+        details={
+            "resource": "model",
+            "reason": "model_download_in_progress",
+            "repo_id": repo_id,
+            "filename": filename,
+            "target": target,
+            "lock_file": str(lock_file),
+        },
+    ):
+        downloaded = hf_hub_download(
+            repo_id=repo_id,
+            filename=filename,
+            local_dir=target_dir,
+            endpoint=settings.comfy.hf_endpoint,
+            token=token,
+        )
     return {"path": str(Path(downloaded)), "target": str(target_dir)}

@@ -39,7 +39,7 @@ Usage:
                 从 ComfyUI zip 和已有 runtime venv 准备一个新 runtime。
   switch <name>  切换到已导入 runtime，并链接共享 models。
   models ...    管理共享 models：list/link/download。
-  catalog ...   管理模型、插件和工作流信息表：validate/list/show/download。
+  catalog ...   管理模型、插件和工作流信息表：validate/list/show/inspect/probe/missing/download/download-bg/install/update/installed。
   remote ...    本机侧远程操作：deploy/status/logs/shell/tunnel/sync-dev。
   help          显示帮助。
 
@@ -72,7 +72,15 @@ Usage:
   ./scripts/run.sh models download runwayml/stable-diffusion-v1-5 --filename v1-5-pruned.safetensors
   ./scripts/run.sh catalog validate
   ./scripts/run.sh catalog show workflow video_wan2_2_14b_animate
+  ./scripts/run.sh catalog inspect workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
+  ./scripts/run.sh catalog probe model clip_vision_h
+  ./scripts/run.sh catalog missing workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
   ./scripts/run.sh catalog download workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
+  ./scripts/run.sh catalog download-bg workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
+  ./scripts/run.sh catalog download-bg-status workflow video_wan2_2_14b_animate
+  ./scripts/run.sh catalog install plugin comfyui_manager
+  ./scripts/run.sh catalog update plugin comfyui_manager
+  ./scripts/run.sh catalog installed plugins
   ./scripts/run.sh remote deploy
   ./scripts/run.sh remote tunnel
   ./scripts/run.sh down dev
@@ -259,7 +267,7 @@ EOF
     catalog)
       cat <<'EOF'
 Usage:
-  ./scripts/run.sh catalog <validate|list|show|download> [args...]
+  ./scripts/run.sh catalog <validate|list|show|inspect|probe|missing|download|download-bg|download-bg-status|install|update|installed> [args...]
 
 职责:
   日常管理 catalog 信息表，底层转发到 ./scripts/catalog.sh。
@@ -268,8 +276,17 @@ Usage:
   ./scripts/run.sh catalog validate
   ./scripts/run.sh catalog list workflows
   ./scripts/run.sh catalog show workflow video_wan2_2_14b_animate
+  ./scripts/run.sh catalog inspect workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
+  ./scripts/run.sh catalog probe model clip_vision_h
+  ./scripts/run.sh catalog missing workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
   ./scripts/run.sh catalog download model wan2_2_animate_14b_fp8_e4m3fn_scaled_kj --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
   ./scripts/run.sh catalog download workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
+  ./scripts/run.sh catalog download-bg workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
+  ./scripts/run.sh catalog download-bg-status workflow video_wan2_2_14b_animate
+  ./scripts/run.sh catalog install plugin comfyui_manager
+  ./scripts/run.sh catalog install plugins
+  ./scripts/run.sh catalog update plugin comfyui_manager
+  ./scripts/run.sh catalog installed plugins
 
 Exit Codes:
   0  成功
@@ -395,7 +412,7 @@ run_models() {
 }
 
 run_catalog() {
-  [[ $# -gt 0 ]] || die "usage: ./scripts/run.sh catalog <validate|list|show|download> [args...]" 2
+  [[ $# -gt 0 ]] || die "usage: ./scripts/run.sh catalog <validate|list|show|inspect|probe|missing|download|download-bg|download-bg-status|install|update|installed> [args...]" 2
   "$ROOT_DIR/scripts/catalog.sh" "$@"
 }
 

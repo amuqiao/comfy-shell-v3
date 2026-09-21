@@ -200,6 +200,8 @@ Usage:
   ./scripts/dev.sh comfy models link
   ./scripts/dev.sh comfy catalog validate
   ./scripts/dev.sh comfy catalog download workflow video_wan2_2_14b_animate --models-dir /data/wangqiao/comfy-shell-v3-workspace/models
+  ./scripts/dev.sh comfy catalog install plugin comfyui_manager
+  ./scripts/dev.sh comfy catalog installed plugins
   ./scripts/dev.sh comfy service status
 EOF
       ;;

@@ -1037,6 +1037,254 @@ def test_run_catalog_dispatches_to_catalog_script(tmp_path):
     ]
 
 
+def test_run_catalog_install_plugin_dispatches_to_catalog_script(tmp_path):
+    root, log_file = fake_run_root(tmp_path)
+
+    result = subprocess.run(
+        ["./scripts/run.sh", "catalog", "install", "plugin", "comfyui_manager"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert log_file.read_text().splitlines() == ["catalog install plugin comfyui_manager"]
+
+
+def test_run_catalog_download_bg_dispatches_to_catalog_script(tmp_path):
+    root, log_file = fake_run_root(tmp_path)
+
+    result = subprocess.run(
+        [
+            "./scripts/run.sh",
+            "catalog",
+            "download-bg",
+            "workflow",
+            "video_wan2_2_14b_animate",
+            "--models-dir",
+            "/workspace/models",
+        ],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert log_file.read_text().splitlines() == [
+        "catalog download-bg workflow video_wan2_2_14b_animate --models-dir /workspace/models"
+    ]
+
+
+def test_run_catalog_lifecycle_commands_dispatch_to_catalog_script(tmp_path):
+    root, log_file = fake_run_root(tmp_path)
+
+    commands = [
+        ["./scripts/run.sh", "catalog", "inspect", "workflow", "video_wan2_2_14b_animate", "--models-dir", "/workspace/models"],
+        ["./scripts/run.sh", "catalog", "probe", "model", "clip_vision_h"],
+        ["./scripts/run.sh", "catalog", "missing", "workflow", "video_wan2_2_14b_animate", "--models-dir", "/workspace/models"],
+    ]
+    for command in commands:
+        result = subprocess.run(
+            command,
+            cwd=ROOT_DIR,
+            text=True,
+            capture_output=True,
+            check=False,
+            env=script_env(tmp_path, ROOT_DIR=str(root)),
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    assert log_file.read_text().splitlines() == [
+        "catalog inspect workflow video_wan2_2_14b_animate --models-dir /workspace/models",
+        "catalog probe model clip_vision_h",
+        "catalog missing workflow video_wan2_2_14b_animate --models-dir /workspace/models",
+    ]
+
+
+def test_catalog_download_bg_starts_nohup_download(tmp_path):
+    root = tmp_path / "fake-root"
+    workspace = tmp_path / "workspace"
+    python = root / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    (root / ".env").write_text(f"COMFY__WORKSPACE_DIR={workspace}\n", encoding="utf-8")
+    marker = tmp_path / "python-args.log"
+    python.write_text(
+        f"""#!/usr/bin/env sh
+echo "$*" > "{marker}"
+exit 0
+""",
+        encoding="utf-8",
+    )
+    python.chmod(0o755)
+
+    result = subprocess.run(
+        [
+            "./scripts/catalog.sh",
+            "download-bg",
+            "workflow",
+            "video_wan2_2_14b_animate",
+            "--models-dir",
+            str(workspace / "models"),
+        ],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "started"
+    assert payload["kind"] == "workflow"
+    assert payload["id"] == "video_wan2_2_14b_animate"
+    assert payload["exit_code"] is None
+    assert Path(payload["pid_file"]).is_file()
+    assert Path(payload["log_file"]).is_file()
+    assert Path(payload["status_file"]).is_file()
+
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and not marker.exists():
+        time.sleep(0.05)
+    assert marker.read_text(encoding="utf-8").strip() == (
+        "-m app.comfy.cli catalog download workflow video_wan2_2_14b_animate "
+        f"--models-dir {workspace / 'models'}"
+    )
+
+    status = subprocess.run(
+        ["./scripts/catalog.sh", "download-bg-status", "workflow", "video_wan2_2_14b_animate"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert status.returncode == 0, status.stdout + status.stderr
+    status_payload = json.loads(status.stdout)
+    assert status_payload["status"] in {"running", "completed"}
+    assert status_payload["pid_file"] == payload["pid_file"]
+    assert status_payload["log_file"] == payload["log_file"]
+    assert status_payload["status_file"] == payload["status_file"]
+    if status_payload["status"] == "completed":
+        assert status_payload["exit_code"] == 0
+
+
+def test_catalog_download_bg_reports_failed_download(tmp_path):
+    root = tmp_path / "fake-root"
+    workspace = tmp_path / "workspace"
+    python = root / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    (root / ".env").write_text(f"COMFY__WORKSPACE_DIR={workspace}\n", encoding="utf-8")
+    python.write_text("#!/usr/bin/env sh\nexit 7\n", encoding="utf-8")
+    python.chmod(0o755)
+
+    start = subprocess.run(
+        ["./scripts/catalog.sh", "download-bg", "model", "wan_2_1_vae"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert start.returncode == 0, start.stdout + start.stderr
+    payload = json.loads(start.stdout)
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        status = subprocess.run(
+            ["./scripts/catalog.sh", "download-bg-status", "model", "wan_2_1_vae"],
+            cwd=ROOT_DIR,
+            text=True,
+            capture_output=True,
+            check=False,
+            env=script_env(tmp_path, ROOT_DIR=str(root)),
+        )
+        assert status.returncode == 0, status.stdout + status.stderr
+        status_payload = json.loads(status.stdout)
+        if status_payload["status"] == "failed":
+            break
+        time.sleep(0.05)
+    else:
+        raise AssertionError(f"background download did not fail: {status_payload}")
+
+    assert status_payload["exit_code"] == 7
+    assert status_payload["pid_file"] == payload["pid_file"]
+    assert status_payload["log_file"] == payload["log_file"]
+
+
+def test_catalog_download_bg_status_marks_stale_running_pid_as_exited(tmp_path):
+    root = tmp_path / "fake-root"
+    workspace = tmp_path / "workspace"
+    python = root / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    (root / ".env").write_text(f"COMFY__WORKSPACE_DIR={workspace}\n", encoding="utf-8")
+    python.write_text("#!/usr/bin/env python\nimport json, sys\njson.dump({'ok': True}, sys.stdout)\n", encoding="utf-8")
+    python.chmod(0o755)
+    run_dir = workspace / "run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "catalog-download-model-wan_2_1_vae.pid").write_text("999999999\n", encoding="utf-8")
+    (run_dir / "catalog-download-model-wan_2_1_vae.status").write_text(
+        "status=running\nexit_code=\n",
+        encoding="utf-8",
+    )
+
+    status = subprocess.run(
+        ["./scripts/catalog.sh", "download-bg-status", "model", "wan_2_1_vae"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert status.returncode == 0, status.stdout + status.stderr
+    status_payload = json.loads(status.stdout)
+    assert status_payload["status"] == "exited"
+    assert status_payload["exit_code"] is None
+    assert status_payload["pid"] == 999999999
+
+
+def test_catalog_download_bg_status_rejects_unrelated_running_pid(tmp_path):
+    root = tmp_path / "fake-root"
+    workspace = tmp_path / "workspace"
+    python = root / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    (root / ".env").write_text(f"COMFY__WORKSPACE_DIR={workspace}\n", encoding="utf-8")
+    python.write_text("#!/usr/bin/env python\nimport json, sys\njson.dump({'ok': True}, sys.stdout)\n", encoding="utf-8")
+    python.chmod(0o755)
+    run_dir = workspace / "run"
+    run_dir.mkdir(parents=True)
+    process = subprocess.Popen(["sleep", "30"])
+    try:
+        (run_dir / "catalog-download-model-wan_2_1_vae.pid").write_text(f"{process.pid}\n", encoding="utf-8")
+        (run_dir / "catalog-download-model-wan_2_1_vae.status").write_text(
+            "status=running\nexit_code=\nrunner_file=/tmp/not-the-runner.sh\n",
+            encoding="utf-8",
+        )
+
+        status = subprocess.run(
+            ["./scripts/catalog.sh", "download-bg-status", "model", "wan_2_1_vae"],
+            cwd=ROOT_DIR,
+            text=True,
+            capture_output=True,
+            check=False,
+            env=script_env(tmp_path, ROOT_DIR=str(root)),
+        )
+    finally:
+        process.terminate()
+        process.wait(timeout=5)
+
+    assert status.returncode == 0, status.stdout + status.stderr
+    status_payload = json.loads(status.stdout)
+    assert status_payload["status"] == "exited"
+    assert status_payload["pid"] == process.pid
+
+
 def test_run_remote_dispatches_to_remote_script(tmp_path):
     root, log_file = fake_run_root(tmp_path)
 

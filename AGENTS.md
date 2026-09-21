@@ -71,19 +71,39 @@
   - `source = "url"` 用于 `hf-mirror.com/.../resolve/...` 这类直链或普通 HTTP 直链，必须配置 `url`、`filename`、`target`。
   - `source = "huggingface"` 用于 HF repo 语义下载，必须配置 `repo_id`、`filename`、`target`，endpoint/token 由 `.env` 的 `COMFY__HF_ENDPOINT` / `COMFY__HF_TOKEN` 提供。
   - `source = "local"` 用于复制已有本地/远端文件，必须配置 `path`、`filename`、`target`。
+  - `size_hint` 是人读提示，可以探测后补充；`size_bytes` 是机器校验合同，配置后下载和 inspect 都必须按字节数校验。
 - 模型下载管理规则：
   - 新增或修改模型时，只改 `catalog/models/*.toml`；真实模型文件不要提交到 git。
   - `target` 决定模型落到 workspace `models/` 下的哪个子目录，例如 `vae` 会落到 `/data/wangqiao/comfy-shell-v3-workspace/models/vae/`。
+  - 查看工作流模型状态：`./scripts/run.sh catalog inspect workflow <workflow-id> --models-dir /data/wangqiao/comfy-shell-v3-workspace/models`。
+  - 探测模型来源链接和大小：`./scripts/run.sh catalog probe model <model-id>`；探测 workflow 用 `probe workflow <workflow-id>`。
+  - 查漏补缺列表：`./scripts/run.sh catalog missing workflow <workflow-id> --models-dir /data/wangqiao/comfy-shell-v3-workspace/models`。
   - 下载单个模型：`./scripts/run.sh catalog download model <model-id> --models-dir /data/wangqiao/comfy-shell-v3-workspace/models`。
   - 下载工作流依赖模型：`./scripts/run.sh catalog download workflow <workflow-id> --models-dir /data/wangqiao/comfy-shell-v3-workspace/models`。
+  - 远端后台下载单个模型：`./scripts/run.sh catalog download-bg model <model-id> --models-dir /data/wangqiao/comfy-shell-v3-workspace/models`。
+  - 远端后台下载工作流依赖模型：`./scripts/run.sh catalog download-bg workflow <workflow-id> --models-dir /data/wangqiao/comfy-shell-v3-workspace/models`。
+  - 查看后台下载状态：`./scripts/run.sh catalog download-bg-status <model|workflow> <id>`；按返回的 `log_file` 查看日志，按 `exit_code` 判断后台命令是否成功结束。
   - 下载前先执行 `./scripts/run.sh catalog validate`，确认 catalog schema、工作流引用和 workflow 文件路径有效。
-  - 下载结果必须查看 JSON 回执，重点确认 `id`、`status`、`source`、`target_path`、`path`、`size_hint` 和来源定位字段。
+  - 同一个目标模型文件只能有一个下载任务；下载实现必须使用 `models/.locks/<target>/<filename>.lock` 目标文件级锁，不要新增绕过锁的下载脚本。
+  - 下载结果必须查看 JSON 回执，重点确认 `id`、`status`、`source`、`target_path`、`path`、`local_size`、`size_hint`、`size_bytes` 和来源定位字段。
   - 下载后用 `ls -lh /data/wangqiao/comfy-shell-v3-workspace/models/<target>/<filename>` 验证文件落盘。
   - 验证当前 ComfyUI 是否可见模型时，检查 `readlink -f /data/wangqiao/comfy-shell-v3-workspace/current/models` 必须指向 workspace `models/`，再检查 `current/models/<target>/<filename>`。
   - 不要在下载命令里临时决定模型子目录；子目录只能来自模型配置表的 `target`。
   - 不要为了下载模型切换 runtime、重启 ComfyUI 或修改 `current` 软链接，除非任务明确要求。
+  - 后台下载只用 `nohup`、pid 文件和日志文件，不引入数据库、任务队列或后台 worker。
   - 如果正式远端代码目录还没部署当前 catalog 能力，不要在远端手工编辑源码；可先用 `./scripts/run.sh remote sync-dev` 同步到 `REMOTE__SYNC_CODE_DIR` 做链路测试，下载目标仍然使用正式 workspace models 目录。
   - `wan_2_1_vae` 是 VAE 辅助模型，只能测试下载和 ComfyUI 可见性，不能单独运行生成效果。
+- 插件管理规则：
+  - 插件信息真源只维护在 `catalog/plugins/*.toml`，工作流文件不要内嵌插件安装信息。
+  - 插件安装位置固定为当前 runtime 的 `current/custom_nodes/<plugin-dir>`；不要安装到项目源码目录或 workspace 顶层。
+  - 安装单个插件：`./scripts/run.sh catalog install plugin <plugin-id>`。
+  - 安装全部 catalog 插件：`./scripts/run.sh catalog install plugins`。
+  - 更新单个插件：`./scripts/run.sh catalog update plugin <plugin-id>`。
+  - 更新全部 catalog 插件：`./scripts/run.sh catalog update plugins`。
+  - 检查当前 runtime 插件：`./scripts/run.sh catalog installed plugins` 或 `./scripts/run.sh catalog installed plugin <plugin-id>`。
+  - 安装或更新插件前必须停止 ComfyUI；代码会拒绝服务运行时修改 `custom_nodes`。
+  - 插件命令只负责 git clone/fetch/checkout/pull，不自动运行插件 `requirements.txt`，依赖修复需要单独记录和执行。
+  - 如果插件目录已存在，安装不会覆盖；需要更新时使用 `update plugin`。
 - 不要在远端开发机器上直接编辑项目源码；常规路径是本机修改、验证、提交、推送，远端 `git pull --ff-only`。
 - 不要在排障时直接运行完整 `requirements.txt` 或升级 Torch/CUDA，除非用户明确要求。优先复用已验证 runtime 的 `.venv`，只在目标 runtime 的独立 `.venv` 内做最小依赖修复。
 - 不要修改 `comfyui-0.27.0-known-good` runtime 的源码或 `.venv`，它是回滚和 seed 环境。

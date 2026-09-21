@@ -75,10 +75,30 @@ def build_parser() -> argparse.ArgumentParser:
     catalog_show = catalog_subparsers.add_parser("show")
     catalog_show.add_argument("kind", choices=["model", "workflow", "plugin"])
     catalog_show.add_argument("id")
+    catalog_inspect = catalog_subparsers.add_parser("inspect")
+    catalog_inspect.add_argument("kind", choices=["model", "workflow"])
+    catalog_inspect.add_argument("id")
+    catalog_inspect.add_argument("--models-dir")
+    catalog_probe = catalog_subparsers.add_parser("probe")
+    catalog_probe.add_argument("kind", choices=["model", "workflow"])
+    catalog_probe.add_argument("id")
+    catalog_missing = catalog_subparsers.add_parser("missing")
+    catalog_missing.add_argument("kind", choices=["workflow"])
+    catalog_missing.add_argument("id")
+    catalog_missing.add_argument("--models-dir")
     catalog_download = catalog_subparsers.add_parser("download")
     catalog_download.add_argument("kind", choices=["model", "workflow"])
     catalog_download.add_argument("id")
     catalog_download.add_argument("--models-dir")
+    catalog_install = catalog_subparsers.add_parser("install")
+    catalog_install.add_argument("kind", choices=["plugin", "plugins"])
+    catalog_install.add_argument("id", nargs="?")
+    catalog_update = catalog_subparsers.add_parser("update")
+    catalog_update.add_argument("kind", choices=["plugin", "plugins"])
+    catalog_update.add_argument("id", nargs="?")
+    catalog_installed = catalog_subparsers.add_parser("installed")
+    catalog_installed.add_argument("kind", choices=["plugin", "plugins"])
+    catalog_installed.add_argument("id", nargs="?")
 
     service = subparsers.add_parser("service")
     service_subparsers = service.add_subparsers(dest="action", required=True)
@@ -137,10 +157,38 @@ def run(args: argparse.Namespace) -> Any:
         return catalog.show_plugin(args.id, catalog_dir)
     if args.domain == "catalog" and args.action == "show" and args.kind == "workflow":
         return catalog.show_workflow(args.id, catalog_dir)
+    if args.domain == "catalog" and args.action == "inspect" and args.kind == "model":
+        return catalog.inspect_model_by_id(settings, args.id, models_dir=args.models_dir, catalog_dir=catalog_dir)
+    if args.domain == "catalog" and args.action == "inspect" and args.kind == "workflow":
+        return catalog.inspect_workflow_models(settings, args.id, models_dir=args.models_dir, catalog_dir=catalog_dir)
+    if args.domain == "catalog" and args.action == "probe" and args.kind == "model":
+        return catalog.probe_model_by_id(settings, args.id, catalog_dir=catalog_dir)
+    if args.domain == "catalog" and args.action == "probe" and args.kind == "workflow":
+        return catalog.probe_workflow_models(settings, args.id, catalog_dir=catalog_dir)
+    if args.domain == "catalog" and args.action == "missing" and args.kind == "workflow":
+        return catalog.missing_workflow_models(settings, args.id, models_dir=args.models_dir, catalog_dir=catalog_dir)
     if args.domain == "catalog" and args.action == "download" and args.kind == "model":
         return catalog.download_model_by_id(settings, args.id, models_dir=args.models_dir, catalog_dir=catalog_dir)
     if args.domain == "catalog" and args.action == "download" and args.kind == "workflow":
         return catalog.download_workflow_models(settings, args.id, models_dir=args.models_dir, catalog_dir=catalog_dir)
+    if args.domain == "catalog" and args.action == "install" and args.kind == "plugin":
+        require_cli_id(args, "usage: comfyctl catalog install plugin <id>")
+        return catalog.install_plugin_by_id(settings, args.id, catalog_dir)
+    if args.domain == "catalog" and args.action == "install" and args.kind == "plugins":
+        reject_cli_id(args, "usage: comfyctl catalog install plugins")
+        return catalog.install_all_plugins(settings, catalog_dir)
+    if args.domain == "catalog" and args.action == "update" and args.kind == "plugin":
+        require_cli_id(args, "usage: comfyctl catalog update plugin <id>")
+        return catalog.update_plugin_by_id(settings, args.id, catalog_dir)
+    if args.domain == "catalog" and args.action == "update" and args.kind == "plugins":
+        reject_cli_id(args, "usage: comfyctl catalog update plugins")
+        return catalog.update_all_plugins(settings, catalog_dir)
+    if args.domain == "catalog" and args.action == "installed" and args.kind == "plugin":
+        require_cli_id(args, "usage: comfyctl catalog installed plugin <id>")
+        return catalog.show_installed_plugin(settings, args.id, catalog_dir)
+    if args.domain == "catalog" and args.action == "installed" and args.kind == "plugins":
+        reject_cli_id(args, "usage: comfyctl catalog installed plugins")
+        return catalog.list_installed_plugins(settings, catalog_dir)
     if args.domain == "service" and args.action == "start":
         return process.start(settings)
     if args.domain == "service" and args.action == "stop":
@@ -151,6 +199,16 @@ def run(args: argparse.Namespace) -> Any:
         print(process.tail_log(settings, lines=args.lines))
         return None
     raise AppError("REQUEST_INVALID", details={"reason": "unknown_cli_command"})
+
+
+def require_cli_id(args: argparse.Namespace, usage: str) -> None:
+    if not getattr(args, "id", None):
+        raise AppError("REQUEST_INVALID", details={"reason": "missing_id", "usage": usage})
+
+
+def reject_cli_id(args: argparse.Namespace, usage: str) -> None:
+    if getattr(args, "id", None):
+        raise AppError("REQUEST_INVALID", details={"reason": "unexpected_id", "usage": usage})
 
 
 def main(argv: list[str] | None = None) -> int:
