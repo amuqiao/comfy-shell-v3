@@ -1,3 +1,8 @@
+# AGENTS.md 职责边界
+- 本文件是给 AI agent 和后续维护者看的操作边界，不是完整教程、排障日志或 workflow 安装手册。
+- 本文件只维护长期稳定规则：真源位置、日常入口、禁止事项、远端边界和必须验证的闭环。
+- 具体安装步骤、一次性排障记录、插件依赖修复和大段使用说明放到 `docs/runbooks/` 或脚本 `--help`，不要继续堆进本文件。
+
 # Git 规则
 - 提交必须保持单一意图，不混入无关改动；跨主题改动应拆分提交。
 - 提交前确认改动范围、提交主题、入口文档或规则文件同步情况。
@@ -64,7 +69,12 @@
   - 工作流信息维护在 `catalog/workflows/*.toml`。
   - 插件信息维护在 `catalog/plugins/*.toml`。
   - 原始 workflow JSON 放在 `catalog/workflow-files/`，不作为配置真源，不要自动改写。
-- 工作流信息只维护说明、原始 JSON 位置、runtime hint 和模型 ID；插件信息独立维护，不归属到具体工作流。
+- Catalog 映射关系必须保持单向清晰：
+  - `catalog/workflows/*.toml` 的 `models` 字段只引用模型 ID，用来表达“这个工作流需要哪些模型”。
+  - 模型 ID 在 `catalog/models/*.toml` 中定义，模型配置负责决定 `source`、`filename`、`target`、`size_bytes` 和 `sha256`。
+  - `target + filename` 决定模型最终落到 workspace `models/` 下的实际路径。
+  - 插件信息独立维护在 `catalog/plugins/*.toml`，不归属到具体工作流，也不要内嵌到 workflow 配置。
+- 工作流信息只维护说明、原始 JSON 位置、runtime hint 和模型 ID；不要解析或改写原始 workflow JSON 来反推 catalog。
 - Catalog 下载原子入口是 `./scripts/catalog.sh download ...`；日常入口使用 `./scripts/run.sh catalog ...` 编排。
 - Catalog 下载模型时可以显式传 `--models-dir`；不传时使用当前配置的 workspace `models/`。
 - 模型下载来源只能由 `catalog/models/*.toml` 决定，不要在临时脚本参数里另起一套来源规则。
@@ -75,6 +85,7 @@
 - 模型下载管理规则：
   - 新增或修改模型时，只改 `catalog/models/*.toml`；真实模型文件不要提交到 git。
   - `target` 决定模型落到 workspace `models/` 下的哪个子目录，例如 `vae` 会落到 `/data/wangqiao/comfy-shell-v3-workspace/models/vae/`。
+  - 标准闭环是：`validate` -> `inspect`/`missing` -> `probe` -> `download-bg` -> `download-bg-status` -> `inspect` -> `metadata`/`enrich --write`。
   - 查看工作流模型状态：`./scripts/run.sh catalog inspect workflow <workflow-id> --models-dir /data/wangqiao/comfy-shell-v3-workspace/models`。
   - 探测模型来源链接和大小：`./scripts/run.sh catalog probe model <model-id>`；探测 workflow 用 `probe workflow <workflow-id>`。
   - 查漏补缺列表：`./scripts/run.sh catalog missing workflow <workflow-id> --models-dir /data/wangqiao/comfy-shell-v3-workspace/models`。
@@ -109,7 +120,10 @@
   - 安装或更新插件前必须停止 ComfyUI；代码会拒绝服务运行时修改 `custom_nodes`。
   - 插件命令只负责 git clone/fetch/checkout/pull，不自动运行插件 `requirements.txt`，依赖修复需要单独记录和执行。
   - 如果插件目录已存在，安装不会覆盖；需要更新时使用 `update plugin`。
-- 不要在远端开发机器上直接编辑项目源码；常规路径是本机修改、验证、提交、推送，远端 `git pull --ff-only`。
+- 远端代码生命周期必须保持清晰：
+  - 不要在远端开发机器上直接编辑项目源码。
+  - 常规路径是本机修改、验证、提交、推送，远端 `git pull --ff-only`。
+  - 只有链路测试或临时验证时才使用 `./scripts/run.sh remote sync-dev`，且不得覆盖远端 `.env`、workspace、runtime、models 或下载中的文件。
 - 不要在排障时直接运行完整 `requirements.txt` 或升级 Torch/CUDA，除非用户明确要求。优先复用已验证 runtime 的 `.venv`，只在目标 runtime 的独立 `.venv` 内做最小依赖修复。
 - 不要修改 `comfyui-0.27.0-known-good` runtime 的源码或 `.venv`，它是回滚和 seed 环境。
 - 当前已跑通的 runtime：
