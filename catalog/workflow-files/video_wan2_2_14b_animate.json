@@ -1125,7 +1125,7 @@
       ],
       "flags": {},
       "order": 36,
-      "mode": 4,
+      "mode": 0,
       "inputs": [
         {
           "name": "model",
@@ -1339,7 +1339,7 @@
       ],
       "flags": {},
       "order": 38,
-      "mode": 4,
+      "mode": 0,
       "inputs": [
         {
           "name": "video",
@@ -1586,7 +1586,7 @@
       },
       "widgets_values": [
         "WanAnimate_relight_lora_fp16.safetensors",
-        0
+        1
       ]
     },
     {
@@ -1851,7 +1851,7 @@
       },
       "widgets_values": [
         "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors",
-        0.5
+        1
       ]
     },
     {
@@ -3304,7 +3304,7 @@
             "widgets_values": [
               384,
               384,
-              16,
+              49,
               1,
               5,
               0
@@ -4453,7 +4453,7 @@
             "widgets_values": [
               384,
               384,
-              16,
+              49,
               1,
               5,
               0
@@ -5621,7 +5621,7 @@
             "widgets_values": [
               384,
               384,
-              16,
+              49,
               1,
               5,
               0
