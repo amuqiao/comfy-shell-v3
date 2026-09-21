@@ -1125,7 +1125,7 @@
       ],
       "flags": {},
       "order": 36,
-      "mode": 0,
+      "mode": 4,
       "inputs": [
         {
           "name": "model",
@@ -1339,7 +1339,7 @@
       ],
       "flags": {},
       "order": 38,
-      "mode": 0,
+      "mode": 4,
       "inputs": [
         {
           "name": "video",
