@@ -27,3 +27,17 @@ size_hint = "128.80MB"
 size_bytes = 135059124
 sha256 = "d86a0b2b59fddc0901a7076e9f59c9f8602602133ed72511c693fd11eea23d91"
 notes = "这是插件私有 ckpt，不放入共享 workspace/models。"
+
+[assets.dwpose_yolox_l_torchscript]
+name = "DWPose YOLOX-L TorchScript detector"
+summary = "comfyui_controlnet_aux 的 DWPreprocessor 使用的 YOLOX-L TorchScript 检测模型。"
+kind = "plugin_ckpt"
+plugin = "comfyui_controlnet_aux"
+source = "huggingface"
+repo_id = "hr16/yolox-onnx"
+filename = "yolox_l.torchscript.pt"
+target = "custom_nodes/comfyui_controlnet_aux/ckpts/hr16/yolox-onnx"
+size_hint = "207.61MB"
+size_bytes = 217697649
+sha256 = "80bc14b13c260c24b3014cd42c02994bf52296ab8fa2d80a60b6afe08c93ef42"
+notes = "这是插件私有 ckpt，不放入共享 workspace/models；WanWrapper 工作流节点直接引用该 TorchScript 文件名。"

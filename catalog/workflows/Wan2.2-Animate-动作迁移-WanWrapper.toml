@@ -1,0 +1,24 @@
+schema_version = 1
+
+[workflows.wan2_2_animate_motion_transfer_wanwrapper]
+name = "Wan2.2-Animate-动作迁移-WanWrapper"
+summary = "B 站 Wan2.2 Animate 动作迁移 WanVideoWrapper 工作流映射表。"
+status = "planned"
+source_url = "https://huggingface.co/Kijai/WanVideo_comfy"
+workflow_file = "workflow-files/B站视频_Wan2.2_Animate/Wan2.2-Animate-动作迁移-WanWrapper.json"
+runtime_hint = "comfyui-0.36.0"
+models = [
+  "wan2_2_animate_14b_fp8_e4m3fn_scaled_kj_wanwrapper",
+  "wananimate_relight_lora_fp16_wanwrapper",
+  "lightx2v_i2v_14b_480p_cfg_step_distill_rank64_bf16_wanwrapper",
+  "wan_2_1_vae_wanwrapper",
+  "umt5_xxl_enc_fp8_e4m3fn_wanwrapper",
+  "clip_vision_h",
+]
+assets = [
+  "dwpose_yolox_l_torchscript",
+  "dwpose_ucoco_384_bs5",
+]
+tags = ["video", "wan2_2", "animate", "wanwrapper", "motion_transfer", "14b", "fp8"]
+notes = "本表按工作流节点里实际选择的子目录路径维护模型落点；原始 workflow JSON 不作为配置真源，不在这里改写。"
+warning = "该工作流还需要 ComfyUI-WanVideoWrapper、ComfyUI-KJNodes、ComfyUI-VideoHelperSuite 和 comfyui_controlnet_aux 插件；插件安装由 catalog/plugins 独立维护。"

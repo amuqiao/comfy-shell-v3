@@ -1,0 +1,66 @@
+schema_version = 1
+
+[models.wan2_2_animate_14b_fp8_e4m3fn_scaled_kj_wanwrapper]
+name = "Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ"
+summary = "WanVideoWrapper 工作流使用的 Wan2.2 Animate 14B fp8 Kijai 打包版主模型。"
+kind = "diffusion_model"
+source = "url"
+url = "https://hf-mirror.com/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/Wan22Animate/Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors"
+filename = "Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors"
+target = "diffusion_models/Wan2.2/Animate"
+size_hint = "17.14GB"
+notes = "匹配 WanVideoModelLoader 节点里的 Wan2.2/Animate 子目录路径。"
+size_bytes = 18401760586
+sha256 = "2936b31473a967e7a429a6646bba60e7862d0938e178b58b2a140f391dd5b8e6"
+
+[models.wananimate_relight_lora_fp16_wanwrapper]
+name = "WanAnimate_relight_lora_fp16"
+summary = "WanVideoWrapper 工作流使用的 Wan2.2 Animate relight LoRA。"
+kind = "lora"
+source = "url"
+url = "https://hf-mirror.com/Kijai/WanVideo_comfy/resolve/main/LoRAs/Wan22_relight/WanAnimate_relight_lora_fp16.safetensors"
+filename = "WanAnimate_relight_lora_fp16.safetensors"
+target = "loras/Wan2.2"
+size_hint = "1.34GB"
+notes = "匹配 WanVideoLoraSelectMulti 节点里的 Wan2.2 子目录路径。"
+size_bytes = 1436672440
+sha256 = "fc646c74c73f4b251f5fd9bc440ef21b03b27305f499966c68b2b3aa31498561"
+
+[models.lightx2v_i2v_14b_480p_cfg_step_distill_rank64_bf16_wanwrapper]
+name = "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16"
+summary = "WanVideoWrapper 工作流使用的 Lightx2v I2V LoRA。"
+kind = "lora"
+source = "url"
+url = "https://hf-mirror.com/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"
+filename = "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"
+target = "loras/Wan2.1"
+size_hint = "703.82MB"
+notes = "匹配 WanVideoLoraSelectMulti 节点里的 Wan2.1 子目录路径。"
+size_bytes = 738005744
+sha256 = "85c4a61c30e0497aa44b91d93a893b624708461a56fe5485183b28fa07e2dfb3"
+
+[models.wan_2_1_vae_wanwrapper]
+name = "wan_2.1_vae"
+summary = "WanVideoWrapper 工作流使用的 Wan 系列 VAE。"
+kind = "vae"
+source = "url"
+url = "https://hf-mirror.com/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors"
+filename = "wan_2.1_vae.safetensors"
+target = "vae/Wan_2.1"
+size_hint = "242.06MB"
+notes = "匹配 WanVideoVAELoader 节点里的 Wan_2.1 子目录路径。"
+size_bytes = 253815318
+sha256 = "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b"
+
+[models.umt5_xxl_enc_fp8_e4m3fn_wanwrapper]
+name = "umt5-xxl-enc-fp8_e4m3fn"
+summary = "WanVideoWrapper 工作流使用的 UMT5 fp8 文本编码器。"
+kind = "text_encoder"
+source = "url"
+url = "https://hf-mirror.com/Kijai/WanVideo_comfy/resolve/main/umt5-xxl-enc-fp8_e4m3fn.safetensors"
+filename = "umt5-xxl-enc-fp8_e4m3fn.safetensors"
+target = "text_encoders/wan2.1"
+size_hint = "6.27GB"
+notes = "匹配 WanVideoTextEncodeCached 节点里的 wan2.1 子目录路径。"
+size_bytes = 6731333792
+sha256 = "3fe5173588270c22505d4f9158bb1644b78331b8614206a97e92760b960c9ffa"
